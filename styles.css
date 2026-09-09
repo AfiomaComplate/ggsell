@@ -122,3 +122,24 @@ textarea.field { padding-top: 0.9rem; padding-bottom: 0.9rem; resize: none; min-
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
+.deals-status-bar { display: flex; gap: .5rem; overflow-x: auto; padding: 0 1rem .5rem; }
+.deals-status-pill { display: inline-flex; align-items: center; gap: .3rem; height: 2rem; padding: 0 .8rem; border: 0; border-radius: 999px; background: var(--surface-2); color: var(--muted); font-size: .75rem; font-weight: 700; white-space: nowrap; }
+.deals-status-pill.on { background: var(--chip); color: var(--chip-fg); }
+.deal-card { border-radius: var(--radius); background: var(--surface); overflow: hidden; margin-top: .5rem; }
+.deal-card-head { display: flex; justify-content: space-between; align-items: center; padding: .75rem 1rem; }
+.deal-card-body { padding: 0 1rem .75rem; }
+.deal-status-tag { display: inline-block; padding: .15rem .5rem; border-radius: 999px; font-size: 10px; font-weight: 800; text-transform: uppercase; }
+.deal-status-pending { background: #3d2e00; color: #f0c040; }
+.deal-status-paid { background: #1a3d1a; color: #8ee39a; }
+.deal-status-completed { background: #1d3a24; color: #8ee39a; }
+.deal-status-rejected { background: #3d1a1a; color: #e06060; }
+.deal-confirm-btn { display: inline-flex; align-items: center; justify-content: center; gap: .5rem; height: 2.5rem; width: 100%; border: 0; border-radius: 999px; background: var(--primary); color: var(--primary-fg); font-weight: 700; font-size: .875rem; margin-top: .5rem; }
+.deal-confirm-btn:active { transform: scale(0.98); }
+.confirm-overlay { position: fixed; inset: 0; z-index: 50; display: flex; align-items: flex-end; justify-content: center; background: color-mix(in srgb, #000 60%, transparent); }
+.confirm-panel { width: 100%; max-width: 28rem; margin: 0 auto; padding: 1rem 1rem 1.5rem; border-radius: 1.5rem 1.5rem 0 0; background: var(--surface); }
+.cp-icon { display: grid; place-items: center; width: 3.5rem; height: 3.5rem; border-radius: 999px; background: var(--chip); margin: .5rem auto 1rem; font-size: 1.5rem; }
+.cp-title { text-align: center; font-size: 1.1rem; font-weight: 800; margin: 0 0 .5rem; }
+.cp-hint { text-align: center; font-size: .75rem; color: var(--muted); line-height: 1.4; margin-bottom: 1rem; }
+.cp-warn { text-align: center; font-size: .7rem; color: var(--chip-fg); background: var(--chip); padding: .5rem .75rem; border-radius: .75rem; margin-bottom: 1rem; }
+.deal-balance-hero { padding: 1.15rem 1.2rem; border-radius: 1.5rem; background: linear-gradient(135deg, #1d3a24, #243342); color: #fff; margin-top: .75rem; }
