@@ -76,7 +76,7 @@ function appUrl(hash) {
 function menuKeyboard() {
   return {
     inline_keyboard: [
-      [{ text: "↗ Открыть", web_app: { url: appUrl() } }],
+      [{ text: "↗ Открыть", web_app: { url: appUrl("profile") } }],
       [
         { text: "👤 Профиль", web_app: { url: appUrl("profile") } },
         { text: "💼 Кошелек", web_app: { url: appUrl("wallet") } },
@@ -384,7 +384,7 @@ async function boot() {
     ],
   });
   await tg("setChatMenuButton", {
-    menu_button: { type: "web_app", text: "Открыть", web_app: { url: appUrl() } },
+    menu_button: { type: "web_app", text: "Открыть", web_app: { url: appUrl("profile") } },
   });
 
   http.createServer((req, res) => {

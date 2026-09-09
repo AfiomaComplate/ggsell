@@ -40,7 +40,7 @@
     orders: saved.orders || [],
     ops: saved.ops || [],
     support: saved.support || [{ id: "s0", from: "support", text: "👋 Привет! Это поддержка.\nНапиши — сообщение придёт оператору в Telegram.", at: Date.now() }],
-    screen: "hub",
+    screen: "profile",
     selectedId: null,
     toast: null,
     query: "",
@@ -80,7 +80,7 @@
     const raw = location.hash.replace(/^#\/?/, "");
     const [s, id] = raw.split("/");
     if (SCREENS.includes(s)) return { screen: s, selectedId: id || null };
-    return { screen: "hub", selectedId: null };
+    return { screen: "profile", selectedId: null };
   }
 
   function tg() { return window.Telegram && window.Telegram.WebApp; }
@@ -780,8 +780,8 @@
       const start = ((tg() && tg().initDataUnsafe && tg().initDataUnsafe.start_param) || new URLSearchParams(location.search).get("tgWebAppStartParam") || "").toLowerCase();
       const map = { support: "support", profile: "profile", wallet: "wallet", chats: "chats", sell: "sell", home: "home", ops: "ops" };
       const hash = readHash();
-      if (hash.screen !== "hub") { state.screen = hash.screen; state.selectedId = hash.selectedId; }
-      else if (map[start]) state.screen = map[start];
+      if (map[start]) { state.screen = map[start]; state.selectedId = null; }
+      else { state.screen = hash.screen; state.selectedId = hash.selectedId; }
       render();
       botApi();
       if (botApi() && initData()) pullThread();
