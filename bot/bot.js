@@ -558,25 +558,10 @@ async function boot() {
     console.log("HTTP :" + PORT, "bot @" + me.result.username);
   });
 
-  if (PUBLIC_URL && /^https:\/\//i.test(PUBLIC_URL)) {
-    const hook = PUBLIC_URL + "/telegram";
-    const w = await tg("setWebhook", { url: hook, allowed_updates: ["message"] });
-    console.log("webhook", hook, w.ok ? "ok" : w.description);
-  } else {
-    await tg("deleteWebhook", { drop_pending_updates: false });
-    console.log("polling mode");
-    poll();
-  }
-
-  if (ADMIN_ID) {
-    await tg("sendMessage", {
-      chat_id: ADMIN_ID,
-      text:
-        `Aurora подключена (@${me.result.username}).\n\n` +
-        "Сообщения из «Помощь» в Mini App приходят сюда.\n" +
-        "Ответьте реплаем — текст уйдёт человеку от имени бота.",
-    }).catch(() => {});
-  }
+  // Старый Render-бот выключен: не поллим и не ставим webhook,
+  // чтобы Railway ggselbot мог забрать тот же BOT_TOKEN.
+  await tg("deleteWebhook", { drop_pending_updates: false });
+  console.log("Render bot idle (polling disabled). HTTP /health only.");
 }
 
 boot().catch((e) => {
