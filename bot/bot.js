@@ -105,7 +105,7 @@ const CAPTION =
 
 async function sendMenu(chatId) {
   const markup = menuKeyboard();
-  const photo = `${WEBAPP}/banner.jpg`;
+  const photo = `${WEBAPP}/start.jpg`;
   const r = await tg("sendPhoto", {
     chat_id: chatId,
     photo,
