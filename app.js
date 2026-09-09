@@ -327,17 +327,17 @@
     if (state.screen === "support") return "";
     const on = (id) => state.screen === id ? "on" : "";
     return `<nav class="tabbar">
+      <button class="tab-btn ${on("profile")}" data-go="profile">${I.user}Профиль</button>
       <button class="tab-btn ${on("home")}" data-go="home">${I.pack}Каталог</button>
       <button class="tab-plus" data-go="sell" aria-label="Новая сделка">${I.plus}</button>
-      <button class="tab-btn ${on("deals")}" data-go="deals">${I.lock}Сделки</button>
+      <button class="tab-btn ${on("wallet")}" data-go="wallet">${I.wallet}Кошелёк</button>
       <button class="tab-btn ${on("support")}" data-go="support">${I.help}Помощь</button>
     </nav>`;
   }
-        function topbar() {
-    if (state.screen === "hub") return "";
+          function topbar() {
+    if (TABS.has(state.screen) || state.screen === "hub") return "";
     return `<header class="header">
-      <button type="button" class="btn btn-ghost" data-back>${I.back}</button>
-      <button type="button" class="btn btn-ghost" data-go="profile" style="width:2.5rem;height:2.5rem;padding:0">${I.user}</button>
+      ${btn(I.back + " Назад", `data-back`, "btn btn-ghost")}
       <button type="button" class="btn btn-chip" data-go="wallet">${money(state.balances[state.payCurrency] || 0, state.payCurrency)}</button>
     </header>`;
   }
@@ -367,7 +367,10 @@
     const items = state.listings.filter((l) => l.stock > 0 && (!q || (l.title + l.description).toLowerCase().includes(q)));
     const catTiles = D.catalogs.slice(0, 3).map((c) => `<span>${CAT_ICO[c.id] || I.pack}</span>`).join("");
     const gameTiles = D.games.slice(0, 3).map((g) => `<span><img src="${img(g.logo)}" alt=""></span>`).join("");
-    return `<div class="scroll pad">
+    return `<div class="row" style="justify-content:space-between;align-items:center;margin-bottom:.5rem">
+        <h1 class="h1" style="margin:0">Каталог</h1>
+        <button type="button" class="btn btn-ghost" data-go="deals">${I.lock} Сделки</button>
+      </div><div class="scroll pad">
       <input class="field" id="q" placeholder="Найти игру, ключ, NFT…" value="${esc(state.query)}">
       <div class="card mt"><button type="button" class="fold-trigger" data-fold="cat">
         <span class="stack">${catTiles}</span>
