@@ -1,5 +1,6 @@
 window.DATA = {
   site: "https://ggsel.net/sellers",
+  botApi: "",
   currencies: [
     { id: "RUB", label: "RUB", name: "Рубль", mark: "₽" },
     { id: "UAH", label: "UAH", name: "Гривна", mark: "₴" },

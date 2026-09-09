@@ -1,0 +1,9 @@
+{
+  "name": "aurora-bot",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Aurora Telegram bot: меню Mini App и поддержка",
+  "main": "bot.js",
+  "engines": { "node": ">=18" },
+  "scripts": { "start": "node bot.js" }
+}

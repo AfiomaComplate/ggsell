@@ -6,7 +6,7 @@
   const ccy = (id) => D.currencies.find((c) => c.id === id) || D.currencies[7];
   const uid = (p) => p + Math.random().toString(36).slice(2, 9);
   const emptyBal = () => Object.fromEntries(D.currencies.map((c) => [c.id, 0]));
-  const SCREENS = ["hub","home","shop","section","sell","wallet","profile","chats","support","item"];
+  const SCREENS = ["hub","home","shop","section","sell","wallet","profile","chats","support","item","ops"];
   const TABS = new Set(["profile","chats","sell","wallet","support"]);
 
   function money(n, id = "USDT") {
@@ -39,7 +39,7 @@
     listings: saved.listings || [],
     orders: saved.orders || [],
     ops: saved.ops || [],
-    support: saved.support || [{ id: "s0", from: "support", text: "👋 Привет! Это поддержка.\nОпиши проблему — мы ответим как можно скорее.", at: Date.now() }],
+    support: saved.support || [{ id: "s0", from: "support", text: "👋 Привет! Это поддержка.\nНапиши — сообщение придёт оператору в Telegram.", at: Date.now() }],
     screen: "hub",
     selectedId: null,
     toast: null,
@@ -115,6 +115,78 @@
   function openExternal(url) {
     const w = tg();
     if (w && w.openLink) w.openLink(url); else window.open(url, "_blank", "noopener");
+  }
+  function initData() {
+    const w = tg();
+    return (w && w.initData) || "";
+  }
+  function botApi() {
+    const q = new URLSearchParams(location.search).get("api");
+    if (q) {
+      try { localStorage.setItem("aurora-bot-api", q.replace(/\/$/, "")); } catch {}
+    }
+    return (D.botApi || localStorage.getItem("aurora-bot-api") || "").replace(/\/$/, "");
+  }
+  function mapMsg(m) {
+    return { id: m.id, from: (m.from === "user" || m.from === "me") ? "me" : "support", text: m.text, at: m.at };
+  }
+  function mergeSupport(msgs) {
+    if (!Array.isArray(msgs)) return;
+    const greet = state.support.find((m) => m.id === "s0");
+    const mapped = msgs.map(mapMsg);
+    const have = new Set(mapped.map((m) => m.id));
+    const pending = state.support.filter((m) => m.pending && !have.has(m.id));
+    state.support = [...(greet ? [greet] : []), ...mapped, ...pending];
+  }
+  async function desk(path, opts) {
+    const base = botApi();
+    if (!base) return null;
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 12000);
+    try {
+      const r = await fetch(base + path, Object.assign({
+        signal: ctrl.signal,
+        headers: { "Content-Type": "application/json", "X-Telegram-Init-Data": initData() },
+      }, opts || {}));
+      if (!r.ok) return null;
+      return await r.json();
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(t);
+    }
+  }
+  async function pullThread() {
+    if (!botApi() || !initData()) return;
+    const res = await desk("/api/thread");
+    if (res && res.messages) {
+      mergeSupport(res.messages);
+      persist();
+      if (state.screen === "support") render();
+    }
+  }
+  async function sendSupport(text) {
+    const local = { id: uid("m"), from: "me", text, at: Date.now(), pending: true };
+    state.support.push(local);
+    state.chatText = "";
+    persist();
+    render();
+    if (!botApi()) {
+      toast("Бот поддержки ещё не подключен");
+      return;
+    }
+    if (!initData()) {
+      toast("Откройте Mini App из Telegram — тогда сообщение придёт оператору");
+      return;
+    }
+    const res = await desk("/api/thread", { method: "POST", body: JSON.stringify({ text }) });
+    if (res && res.messages) {
+      mergeSupport(res.messages);
+      persist();
+      render();
+    } else {
+      toast("Не дошло до бота. Проверьте, что сервер бота запущен.");
+    }
   }
 
   function ico(d) {
@@ -486,15 +558,16 @@
   }
 
   function support() {
+    const live = Boolean(botApi());
     return `<div class="chat-screen">
       <header class="row gap" style="padding:.75rem 1rem;border-bottom:1px solid var(--border)">
         <button type="button" class="lot-tool" data-go="chats">${I.back}</button>
         <span class="avatar" style="width:2.5rem;height:2.5rem;background:var(--chip);color:var(--chip-fg)">${I.shield}</span>
-        <div><p class="bold" style="margin:0;font-size:.875rem">Поддержка</p><p class="xs chipfg" style="margin:0">на связи</p></div>
+        <div><p class="bold" style="margin:0;font-size:.875rem">Поддержка</p><p class="xs ${live ? "chipfg" : "muted"}" style="margin:0">${live ? "на связи в Telegram" : "ожидает бота"}</p></div>
       </header>
       <div class="scroll" id="chatlog" style="padding:1rem;display:flex;flex-direction:column;gap:.75rem">
         ${state.support.map((m) => m.from === "me"
-          ? `<div style="display:flex;flex-direction:column;align-items:flex-end"><div class="chat-bubble chat-me">${esc(m.text)}</div><span class="xs muted" style="margin-top:.25rem">${timeLabel(m.at)}</span></div>`
+          ? `<div style="display:flex;flex-direction:column;align-items:flex-end"><div class="chat-bubble chat-me">${esc(m.text)}</div><span class="xs muted" style="margin-top:.25rem">${timeLabel(m.at)}${m.pending ? " · отправка" : ""}</span></div>`
           : `<div class="row gap" style="align-items:flex-end"><span class="avatar" style="width:2rem;height:2rem;background:var(--chip);color:var(--chip-fg)">${I.shield}</span><div><div class="chat-bubble chat-them">${esc(m.text)}</div><span class="xs muted" style="margin-top:.25rem">${timeLabel(m.at)}</span></div></div>`
         ).join("")}
       </div>
@@ -502,6 +575,17 @@
         <input class="field" id="chat" placeholder="Сообщение…" value="${esc(state.chatText)}" style="min-height:2.75rem;flex:1">
         <button type="submit" class="tab-plus" style="margin:0;width:2.75rem;height:2.75rem" ${state.chatText.trim() ? "" : "disabled"}>${I.send}</button>
       </form>
+    </div>`;
+  }
+
+  function ops() {
+    const cur = botApi();
+    return `<div class="scroll pad" style="padding-top:1.5rem">
+      <h1 class="h1">Бот поддержки</h1>
+      <p class="small muted">Адрес сервера, где запущен <code>bot/bot.js</code>. Токен сюда не вставляйте.</p>
+      <input class="field mt" id="botapi" placeholder="https://ваш-сервер.onrender.com" value="${esc(cur)}">
+      ${btn("Сохранить", `data-save-api`, "btn btn-primary mt")}
+      <p class="xs muted mt">После сохранения напишите в «Помощь» из Telegram — сообщение придёт вам в бота.</p>
     </div>`;
   }
 
@@ -517,6 +601,7 @@
       case "profile": return profile();
       case "chats": return chats();
       case "support": return support();
+      case "ops": return ops();
       default: return hub();
     }
   }
@@ -577,7 +662,7 @@
 
   function bind(root) {
     root.addEventListener("click", (e) => {
-      const t = e.target.closest("[data-go],[data-buy],[data-site],[data-back],[data-fold],[data-pick],[data-region],[data-role],[data-svc],[data-game],[data-want],[data-offer],[data-sell-next],[data-sell-back],[data-publish],[data-buy-go],[data-sheet],[data-ccy],[data-pick-ccy],[data-set-ccy],[data-topup],[data-withdraw],[data-sort-dir],[data-sort-key]");
+      const t = e.target.closest("[data-go],[data-buy],[data-site],[data-back],[data-fold],[data-pick],[data-region],[data-role],[data-svc],[data-game],[data-want],[data-offer],[data-sell-next],[data-sell-back],[data-publish],[data-buy-go],[data-sheet],[data-ccy],[data-pick-ccy],[data-set-ccy],[data-topup],[data-withdraw],[data-sort-dir],[data-sort-key],[data-save-api]");
       if (!t) return;
       if (t.hasAttribute("data-stop")) return;
       haptic();
@@ -646,6 +731,14 @@
       }
       if (t.hasAttribute("data-sort-dir")) { state.sortDir = state.sortDir === "desc" ? "asc" : "desc"; render(); return; }
       if (t.hasAttribute("data-sort-key")) { state.sortKey = state.sortKey === "price" ? "title" : "price"; render(); return; }
+      if (t.hasAttribute("data-save-api")) {
+        const v = ($("#botapi") ? $("#botapi").value : "").trim().replace(/\/$/, "");
+        if (v && !/^https:\/\//i.test(v)) return toast("Нужен https:// адрес сервера");
+        try { localStorage.setItem("aurora-bot-api", v); } catch {}
+        D.botApi = v;
+        toast(v ? "Сервер бота сохранён" : "Адрес очищен");
+        return;
+      }
     });
     const q = $("#q"); if (q) q.addEventListener("input", (e) => { state.query = e.target.value; });
     const title = $("#title"); if (title) title.addEventListener("input", (e) => { state.sell.title = e.target.value; });
@@ -666,14 +759,7 @@
       e.preventDefault();
       const body = (state.chatText || "").trim();
       if (!body) return;
-      state.support.push({ id: uid("m"), from: "me", text: body, at: Date.now() });
-      state.chatText = "";
-      persist();
-      render();
-      setTimeout(() => {
-        state.support.push({ id: uid("s"), from: "support", text: "Приняли. Ответим в этом чате. Чтобы получать ответы в Telegram — подключите бота после публикации Mini App.", at: Date.now() });
-        persist(); render();
-      }, 700);
+      sendSupport(body);
     });
     const panel = root.querySelector(".sheet-panel");
     if (panel) panel.addEventListener("click", (e) => e.stopPropagation());
@@ -692,11 +778,14 @@
   const tryBoot = () => {
     if (bootTg() || n >= 20) {
       const start = ((tg() && tg().initDataUnsafe && tg().initDataUnsafe.start_param) || new URLSearchParams(location.search).get("tgWebAppStartParam") || "").toLowerCase();
-      const map = { support: "support", profile: "profile", wallet: "wallet", chats: "chats", sell: "sell", home: "home" };
+      const map = { support: "support", profile: "profile", wallet: "wallet", chats: "chats", sell: "sell", home: "home", ops: "ops" };
       const hash = readHash();
       if (hash.screen !== "hub") { state.screen = hash.screen; state.selectedId = hash.selectedId; }
       else if (map[start]) state.screen = map[start];
       render();
+      botApi();
+      if (botApi() && initData()) pullThread();
+      setInterval(() => { if (state.screen === "support") pullThread(); }, 2500);
       return;
     }
     n += 1; setTimeout(tryBoot, 40);

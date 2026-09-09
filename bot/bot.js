@@ -1,0 +1,406 @@
+/**
+ * Aurora — бот меню + поддержка Mini App.
+ *
+ * Сообщения из вкладки «Помощь» приходят тебе в этот бот.
+ * Ответь РЕПЛАЕМ — текст уйдёт человеку в Mini App и в Telegram от имени бота.
+ *
+ * Переменные окружения:
+ *   BOT_TOKEN    токен от @BotFather
+ *   ADMIN_ID     твой числовой Telegram ID (бот пришлёт его на /id)
+ *   WEBAPP_URL   https://afiomacomplate.github.io/ggsell/
+ *   PUBLIC_URL   публичный https этого сервера (для webhook и Mini App)
+ *   PORT         порт HTTP, по умолчанию 3000
+ *
+ * Запуск: node bot.js
+ */
+"use strict";
+
+const http = require("http");
+const fs = require("fs");
+const path = require("path");
+const crypto = require("crypto");
+
+const TOKEN = process.env.BOT_TOKEN || "";
+const ADMIN_ID = String(process.env.ADMIN_ID || "").trim();
+const WEBAPP = (process.env.WEBAPP_URL || "https://afiomacomplate.github.io/ggsell/").replace(/\/$/, "");
+const PUBLIC_URL = (process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || "").replace(/\/$/, "");
+const SITE = "https://ggsel.net/sellers";
+const PORT = Number(process.env.PORT || 3000);
+const FILE = path.join(__dirname, "data", "support.json");
+
+if (!TOKEN) {
+  console.error("Нужен BOT_TOKEN");
+  process.exit(1);
+}
+
+function empty() {
+  return { tickets: [], map: {}, offset: 0 };
+}
+
+function load() {
+  try {
+    return { ...empty(), ...JSON.parse(fs.readFileSync(FILE, "utf8")) };
+  } catch {
+    return empty();
+  }
+}
+
+let store = load();
+
+function save() {
+  try {
+    fs.mkdirSync(path.dirname(FILE), { recursive: true });
+    fs.writeFileSync(FILE, JSON.stringify(store));
+  } catch (e) {
+    console.error("save", e.message);
+  }
+}
+
+function uid() {
+  return "m" + Math.random().toString(36).slice(2, 10);
+}
+
+async function tg(method, payload) {
+  const r = await fetch(`https://api.telegram.org/bot${TOKEN}/${method}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload || {}),
+  });
+  return r.json();
+}
+
+function appUrl(hash) {
+  return hash ? `${WEBAPP}/#/${hash}` : `${WEBAPP}/`;
+}
+
+function menuKeyboard() {
+  return {
+    inline_keyboard: [
+      [{ text: "↗ Открыть", web_app: { url: appUrl() } }],
+      [
+        { text: "👤 Профиль", web_app: { url: appUrl("profile") } },
+        { text: "💼 Кошелек", web_app: { url: appUrl("wallet") } },
+      ],
+      [
+        { text: "💬 Чаты", web_app: { url: appUrl("chats") } },
+        { text: "➕ Создать", web_app: { url: appUrl("sell") } },
+      ],
+      [
+        { text: "🛟 Поддержка", web_app: { url: appUrl("support") } },
+        { text: "🔗 Сайт", url: SITE },
+      ],
+    ],
+  };
+}
+
+function supportKeyboard() {
+  return {
+    inline_keyboard: [[{ text: "Открыть поддержку", web_app: { url: appUrl("support") } }]],
+  };
+}
+
+const CAPTION =
+  "🟢 Сервис для создания и проведения сделок между пользователями\n\n" +
+  "Покупайте, продавайте и обменивайте товары или услуги безопасно и удобно ☘️";
+
+async function sendMenu(chatId) {
+  await tg("sendMessage", { chat_id: chatId, text: CAPTION, reply_markup: menuKeyboard() });
+}
+
+function upsert(tgId, username, firstName) {
+  const userId = "tg-" + tgId;
+  let t = store.tickets.find((x) => x.userId === userId);
+  if (!t) {
+    t = { userId, tgId: Number(tgId), username: username || "", firstName: firstName || "", messages: [], updatedAt: Date.now() };
+    store.tickets.push(t);
+  }
+  t.username = username || t.username;
+  t.firstName = firstName || t.firstName;
+  t.tgId = Number(tgId) || t.tgId;
+  return t;
+}
+
+async function notifyAdmin(ticket, text) {
+  if (!ADMIN_ID) return;
+  const name = ticket.firstName || ticket.username || "Гость";
+  const handle = ticket.username ? "@" + ticket.username : "id " + ticket.tgId;
+  const r = await tg("sendMessage", {
+    chat_id: ADMIN_ID,
+    text: `💬 ${name} · ${handle}\nТикет ${ticket.userId}\n\n${text}\n\n↩ Ответьте реплаем на это сообщение.`,
+    reply_markup: { force_reply: true, selective: true },
+  });
+  if (r && r.ok && r.result && r.result.message_id) {
+    store.map[String(r.result.message_id)] = ticket.userId;
+    save();
+  }
+}
+
+async function notifyUser(ticket, text) {
+  if (!ticket.tgId) return;
+  await tg("sendMessage", {
+    chat_id: ticket.tgId,
+    text: `Ответ поддержки\n\n${text}`,
+    reply_markup: supportKeyboard(),
+  });
+}
+
+function ticketFromReply(reply) {
+  if (!reply || !reply.message_id) return null;
+  const mapped = store.map[String(reply.message_id)];
+  if (mapped) return store.tickets.find((t) => t.userId === mapped) || null;
+  const blob = `${reply.text || ""}\n${reply.caption || ""}`;
+  const m = blob.match(/Тикет\s+(\S+)/);
+  if (m) return store.tickets.find((t) => t.userId === m[1]) || null;
+  return null;
+}
+
+function addUserMsg(ticket, text) {
+  const msg = { id: uid(), from: "user", text, at: Date.now() };
+  ticket.messages.push(msg);
+  ticket.updatedAt = Date.now();
+  save();
+  return msg;
+}
+
+function addSupportMsg(ticket, text) {
+  const msg = { id: uid(), from: "support", text, at: Date.now() };
+  ticket.messages.push(msg);
+  ticket.updatedAt = Date.now();
+  save();
+  return msg;
+}
+
+async function handleMessage(msg) {
+  const fromId = msg.from && msg.from.id;
+  if (!fromId) return;
+  const text = (msg.text || msg.caption || (msg.photo ? "[фото]" : "")).trim();
+  if (!text) return;
+  const isAdmin = ADMIN_ID && String(fromId) === String(ADMIN_ID);
+
+  if (/^\/id\b/.test(text)) {
+    await tg("sendMessage", {
+      chat_id: fromId,
+      text: `Ваш Telegram ID: ${fromId}\n\nПропишите его в ADMIN_ID, если это вы оператор.`,
+    });
+    return;
+  }
+
+  if (/^\/(start|menu)\b/.test(text)) {
+    await sendMenu(fromId);
+    if (!ADMIN_ID) {
+      await tg("sendMessage", { chat_id: fromId, text: `ADMIN_ID ещё не задан. Ваш ID: ${fromId}` });
+    }
+    return;
+  }
+
+  if (/^\/support\b/.test(text)) {
+    await tg("sendMessage", {
+      chat_id: fromId,
+      text: "Напишите сообщение — оно уйдёт в поддержку. Или откройте чат в Mini App.",
+      reply_markup: supportKeyboard(),
+    });
+    return;
+  }
+
+  if (isAdmin) {
+    const ticket = ticketFromReply(msg.reply_to_message);
+    if (!ticket) {
+      await tg("sendMessage", {
+        chat_id: fromId,
+        text: "Ответьте реплаем на сообщение тикета, чтобы ответ ушёл пользователю.",
+      });
+      return;
+    }
+    addSupportMsg(ticket, text);
+    await notifyUser(ticket, text);
+    await tg("sendMessage", { chat_id: fromId, text: "✓ Ответ отправлен" });
+    return;
+  }
+
+  const ticket = upsert(fromId, (msg.from && msg.from.username) || "", (msg.from && msg.from.first_name) || "");
+  addUserMsg(ticket, text);
+  await notifyAdmin(ticket, text);
+  await tg("sendMessage", {
+    chat_id: fromId,
+    text: "Приняли. Ответим здесь и в Mini App.",
+    reply_markup: supportKeyboard(),
+  });
+}
+
+function timingEqual(a, b) {
+  const ba = Buffer.from(String(a));
+  const bb = Buffer.from(String(b));
+  if (ba.length !== bb.length) return false;
+  return crypto.timingSafeEqual(ba, bb);
+}
+
+function verifyInitData(initData) {
+  if (!initData) return null;
+  const params = new URLSearchParams(initData);
+  const hash = params.get("hash");
+  if (!hash) return null;
+  params.delete("hash");
+  const dataCheckString = [...params.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([k, v]) => `${k}=${v}`)
+    .join("\n");
+  const secret = crypto.createHmac("sha256", "WebAppData").update(TOKEN).digest();
+  const check = crypto.createHmac("sha256", secret).update(dataCheckString).digest("hex");
+  if (!timingEqual(check, hash)) return null;
+  const authDate = Number(params.get("auth_date") || 0);
+  if (authDate && Date.now() / 1000 - authDate > 86400 * 2) return null;
+  try {
+    return JSON.parse(params.get("user") || "null");
+  } catch {
+    return null;
+  }
+}
+
+function cors(res) {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Telegram-Init-Data");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+}
+
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    req.on("data", (c) => chunks.push(c));
+    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+    req.on("error", reject);
+  });
+}
+
+function send(res, code, obj) {
+  cors(res);
+  const body = JSON.stringify(obj);
+  res.writeHead(code, { "Content-Type": "application/json; charset=utf-8" });
+  res.end(body);
+}
+
+async function onRequest(req, res) {
+  cors(res);
+  const url = new URL(req.url, "http://localhost");
+  if (req.method === "OPTIONS") {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+  if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/health")) {
+    send(res, 200, { ok: true, bot: "aurora", admin: Boolean(ADMIN_ID) });
+    return;
+  }
+  if (req.method === "POST" && (url.pathname === "/telegram" || url.pathname === "/webhook")) {
+    try {
+      const update = JSON.parse(await readBody(req));
+      if (update.message) await handleMessage(update.message);
+    } catch (e) {
+      console.error("webhook", e);
+    }
+    send(res, 200, { ok: true });
+    return;
+  }
+  if (url.pathname === "/api/thread") {
+    const user = verifyInitData(req.headers["x-telegram-init-data"] || "");
+    if (!user || !user.id) {
+      send(res, 401, { ok: false, error: "Откройте Mini App из Telegram" });
+      return;
+    }
+    const ticket = upsert(user.id, user.username || "", user.first_name || "");
+    if (req.method === "GET") {
+      send(res, 200, { ok: true, messages: ticket.messages });
+      return;
+    }
+    if (req.method === "POST") {
+      let body = {};
+      try {
+        body = JSON.parse(await readBody(req) || "{}");
+      } catch {
+        body = {};
+      }
+      const text = String(body.text || "").trim().slice(0, 2000);
+      if (!text) {
+        send(res, 400, { ok: false, error: "Пустое сообщение" });
+        return;
+      }
+      addUserMsg(ticket, text);
+      await notifyAdmin(ticket, text);
+      send(res, 200, { ok: true, messages: ticket.messages });
+      return;
+    }
+  }
+  send(res, 404, { ok: false });
+}
+
+async function poll() {
+  try {
+    const r = await tg("getUpdates", { offset: store.offset, timeout: 25, allowed_updates: ["message"] });
+    if (r && r.ok) {
+      for (const u of r.result) {
+        store.offset = u.update_id + 1;
+        if (u.message) await handleMessage(u.message);
+      }
+      save();
+    } else if (r && r.description) {
+      console.error("getUpdates", r.description);
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+  } catch (e) {
+    console.error("poll", e.message);
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+  poll();
+}
+
+async function boot() {
+  const me = await tg("getMe");
+  if (!me.ok) {
+    console.error("Токен не принят:", me.description);
+    process.exit(1);
+  }
+  await tg("setMyCommands", {
+    commands: [
+      { command: "start", description: "Открыть меню" },
+      { command: "menu", description: "Сделки и кошелёк" },
+      { command: "support", description: "Написать в поддержку" },
+      { command: "id", description: "Показать мой Telegram ID" },
+    ],
+  });
+  await tg("setChatMenuButton", {
+    menu_button: { type: "web_app", text: "Открыть", web_app: { url: appUrl() } },
+  });
+
+  http.createServer((req, res) => {
+    onRequest(req, res).catch((e) => {
+      console.error(e);
+      send(res, 500, { ok: false });
+    });
+  }).listen(PORT, "0.0.0.0", () => {
+    console.log("HTTP :" + PORT, "bot @" + me.result.username);
+  });
+
+  if (PUBLIC_URL && /^https:\/\//i.test(PUBLIC_URL)) {
+    const hook = PUBLIC_URL + "/telegram";
+    const w = await tg("setWebhook", { url: hook, allowed_updates: ["message"] });
+    console.log("webhook", hook, w.ok ? "ok" : w.description);
+  } else {
+    await tg("deleteWebhook", { drop_pending_updates: false });
+    console.log("polling mode");
+    poll();
+  }
+
+  if (ADMIN_ID) {
+    await tg("sendMessage", {
+      chat_id: ADMIN_ID,
+      text:
+        `Aurora подключена (@${me.result.username}).\n\n` +
+        "Сообщения из «Помощь» в Mini App приходят сюда.\n" +
+        "Ответьте реплаем — текст уйдёт человеку от имени бота.",
+    }).catch(() => {});
+  }
+}
+
+boot().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});
