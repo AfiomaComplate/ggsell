@@ -38,12 +38,14 @@ window.DATA = {
     { id: "exchange", name: "Обмен", hint: "Аккаунт на аккаунт", cats: ["exchange"] }
   ],
   labels: {
+    deals: "Безопасная сделка",
     accounts: "Аккаунт", keys: "Ключ", gift: "Гифт", topup: "Пополнение", items: "Предмет",
     service: "Услуга", giftcard: "Подарочная карта", paycard: "Карта оплаты", subs: "Подписка",
     buysub: "Покупка подписки", onaccount: "Покупка на ваш аккаунт", nft: "NFT Telegram",
     stars: "Stars", exchange: "Обмен", other: "Другое"
   },
   services: [
+    { id: "deals", label: "🔒 Сделка", hint: "Безопасная сделка с гарантом" },
     { id: "accounts", label: "Аккаунт", hint: "Готовый аккаунт" },
     { id: "keys", label: "Ключ", hint: "Код активации" },
     { id: "gift", label: "Гифт", hint: "Подарок в магазине" },
