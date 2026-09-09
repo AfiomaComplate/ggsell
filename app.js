@@ -494,7 +494,11 @@
     const g = game(s.gameId);
     const sc = g && D.showcases[g.id];
     const showGames = D.gameCats.includes(s.category);
-    const steps = `<div class="deal-steps">${[1,2,3].map((n,i) => `<div class="deal-step ${s.step >= n ? "on" : ""}"><span class="deal-num">${n}</span><span class="xs">${["Роль","Детали","Готово"][i]}</span></div>`).join("")}</div>`;
+    const steps = `<div class="deal-steps">${[1,2,3].map((n, i) => {
+      const node = `<div class="deal-step ${s.step >= n ? "on" : ""} ${s.step === n ? "now" : ""}"><span class="deal-num">${n}</span><span class="xs">${["Роль","Детали","Готово"][i]}</span></div>`;
+      const bar = n < 3 ? `<div class="deal-bar ${s.step > n ? "on" : ""}"><i></i></div>` : "";
+      return node + bar;
+    }).join("")}</div>`;
     let body = "";
     if (s.step === 1) {
       body = `<p class="label mt-4">Ваша роль</p>
