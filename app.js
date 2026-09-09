@@ -42,7 +42,7 @@
     listings: saved.listings || [],
     orders: saved.orders || [],
     ops: saved.ops || [],
-    support: saved.support || [{ id: "s0", from: "support", text: " Привет! Это поддержка.\nНапиши — сообщение придёт оператору в Telegram.", at: Date.now() }],
+    support: saved.support || [{ id: "s0", from: "support", text: "👋 Привет! Это поддержка.\nНапиши — сообщение придёт оператору в Telegram.", at: Date.now() }],
     dealBalance: saved.dealBalance || 0,
     dealDeals: saved.dealDeals || [],
     confirmModal: null,
@@ -323,7 +323,7 @@
     </div>`;
   }
 
-        function tabbar() {
+  function tabbar() {
     if (state.screen === "support") return "";
     const on = (id) => state.screen === id ? "on" : "";
     return `<nav class="tabbar">
@@ -334,7 +334,7 @@
       <button class="tab-btn ${on("support")}" data-go="support">${I.help}Помощь</button>
     </nav>`;
   }
-          function topbar() {
+  function topbar() {
     if (TABS.has(state.screen) || state.screen === "hub") return "";
     return `<header class="header">
       ${btn(I.back + " Назад", `data-back`, "btn btn-ghost")}
@@ -367,10 +367,14 @@
     const items = state.listings.filter((l) => l.stock > 0 && (!q || (l.title + l.description).toLowerCase().includes(q)));
     const catTiles = D.catalogs.slice(0, 3).map((c) => `<span>${CAT_ICO[c.id] || I.pack}</span>`).join("");
     const gameTiles = D.games.slice(0, 3).map((g) => `<span><img src="${img(g.logo)}" alt=""></span>`).join("");
-    return `<div class="row" style="justify-content:space-between;align-items:center;margin-bottom:.5rem">
-        <h1 class="h1" style="margin:0">Каталог</h1>
-        <button type="button" class="btn btn-ghost" data-go="deals">${I.lock} Сделки</button>
-      </div><div class="scroll pad">
+    
+    const headerRow = `<div class="row" style="justify-content:space-between;align-items:center;margin-bottom:.5rem">
+      <h1 class="h1" style="margin:0">Каталог</h1>
+      <button type="button" class="btn btn-ghost" data-go="deals">${I.lock} Сделки</button>
+    </div>`;
+
+    return `<div class="scroll pad">
+      ${headerRow}
       <input class="field" id="q" placeholder="Найти игру, ключ, NFT…" value="${esc(state.query)}">
       <div class="card mt"><button type="button" class="fold-trigger" data-fold="cat">
         <span class="stack">${catTiles}</span>
@@ -461,7 +465,7 @@
     </div>`;
   }
 
-     function sellView() {
+  function sellView() {
     const s = state.sell;
     const g = game(s.gameId);
     const sc = g && D.showcases[g.id];
@@ -480,7 +484,7 @@
         ${D.games.map((x) => `<button type="button" class="card ${s.gameId === x.id ? "ring" : ""}" style="padding:.75rem;border:0;color:inherit;display:flex;flex-direction:column;align-items:center;gap:.4rem" data-game="${x.id}">${logo(x.id, "logo")}<span class="xs bold">${x.name}</span></button>`).join("")}
       </div>${btn("Далее", `data-sell-next`, "btn btn-primary mt-4")}`;
     } else if (s.step === 2) {
-      // Категории используют data-svc (работают через глобальный слушатель)
+      // Категории используют data-svc
       const servicesHtml = D.services.map((t) => {
          return `<button type="button" class="card ${s.category === t.id ? "ring" : ""}" 
             data-svc="${t.id}"
@@ -502,7 +506,7 @@
         <div class="card mt" style="padding:1.5rem; text-align:center; border:2px dashed var(--border); cursor:pointer;" onclick="document.getElementById('photos-input').click()">
            ${I.image} <span class="bold" style="display:block;margin-top:0.5rem">Нажми, чтобы добавить фото</span>
            <span class="xs muted">JPG, PNG, WEBP</span>
-           <input id="photos-input" type="file" accept="image/*" multiple style="display:none">
+           <input id="photos-input" type="file" accept="image/*" multiple style="display:none" onchange="window.handlePhotos(this)">
         </div>
 
         ${s.photos.length > 0 ? `<div class="grid2 mt-2">${s.photos.map((p,i) => `<div style="position:relative"><img src="${p}" style="height:6rem;width:100%;object-fit:cover;border-radius:1rem"><button type="button" style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.6);color:#fff;border-radius:50%;width:20px;height:20px;display:grid;place-items:center;font-size:12px" onclick="state.sell.photos.splice(${i},1);render()">×</button></div>`).join("")}</div>` : ""}
@@ -527,6 +531,7 @@
     }
     return `<div class="scroll pad"><p class="label">Сделка</p><h1 class="h1">Новая сделка</h1><p class="small muted">Безопасная сделка с защитой</p>${steps}${body}</div>`;
   }
+  
   function wallet() {
     const meta = ccy(state.payCurrency);
     const have = state.balances[state.payCurrency] || 0;
@@ -884,7 +889,17 @@
     go("deals");
   }
 
-  // ГЛОБАЛЬНЫЕ СЛУШАТЕЛИ (ОДИН РАЗ)
+  // ГЛОБАЛЬНАЯ ФУНКЦИЯ ЗАГРУЗКИ ФОТО (чтобы работала в HTML)
+  window.handlePhotos = async function(input) {
+    const files = Array.from(input.files || []);
+    for (const f of files.slice(0, 8 - state.sell.photos.length)) { 
+      try { state.sell.photos.push(await compressFile(f)); } catch {} 
+    }
+    input.value = ""; // сброс, чтобы можно было загрузить то же фото снова
+    render();
+  };
+
+  // ГЛОБАЛЬНЫЕ СЛУШАТЕЛИ
   const app = document.getElementById("app");
   app.addEventListener("click", (e) => {
     const t = e.target.closest("[data-go],[data-buy],[data-site],[data-back],[data-fold],[data-pick],[data-region],[data-role],[data-svc],[data-game],[data-want],[data-offer],[data-sell-next],[data-sell-back],[data-publish],[data-buy-go],[data-sheet],[data-ccy],[data-pick-ccy],[data-set-ccy],[data-topup],[data-withdraw],[data-sort-dir],[data-sort-key],[data-save-api],[data-send-chat],[data-confirm-deal],[data-deal-filter],[data-close-confirm]");
@@ -899,18 +914,25 @@
     if (t.dataset.pick != null) { state.shopPick = t.dataset.pick; state.shopRegion = ""; render(); return; }
     if (t.dataset.region) { state.shopRegion = state.shopRegion === t.dataset.region ? "" : t.dataset.region; render(); return; }
     if (t.dataset.role) { state.sell.role = t.dataset.role; state.sell.step = 2; render(); return; }
-        if (t.dataset.svc) { 
+    
+    // ЛОГИКА КАТЕГОРИЙ
+    if (t.dataset.svc) { 
       state.sell.category = t.dataset.svc; 
       applyCopy(); 
-      if (t.dataset.svc === "deals") { state.sell.role = "sell"; state.sell.step = 3; }
+      // Если выбрали Сделки - сразу прыгаем к заполнению
+      if (t.dataset.svc === "deals") { 
+          state.sell.role = "sell"; 
+          state.sell.step = 3; 
+      }
       render(); 
-      // Авто-скролл к полю ввода
+      // Автоскролл вниз
       setTimeout(()=>{
         const el = document.getElementById('title');
         if(el) el.scrollIntoView({behavior:'smooth', block:'center'});
       }, 100);
       return; 
     }
+
     if (t.dataset.game) { state.sell.gameId = t.dataset.game; applyCopy(); render(); return; }
     if (t.dataset.want) { state.sell.wantGameId = t.dataset.want; applyCopy(); render(); return; }
     if (t.dataset.offer) { state.sell.category = t.dataset.offercat; const g = game(state.sell.gameId); state.sell.title = g ? `${g.name} · ${t.dataset.offertitle}` : t.dataset.offertitle; state.sell.description = `${t.dataset.offertitle}. Передача после оплаты.`; render(); return; }
@@ -969,12 +991,7 @@
     if (t.hasAttribute("data-close-confirm")) { state.confirmModal = null; render(); return; }
   });
 
-  // Инпуты (один раз)
-    document.getElementById("photos-input")?.addEventListener("change", async (e) => {
-    const files = Array.from(e.target.files || []);
-    for (const f of files.slice(0, 8 - state.sell.photos.length)) { try { state.sell.photos.push(await compressFile(f)); } catch {} }
-    render();
-  });
+  // Другие слушатели
   document.getElementById("q")?.addEventListener("input", (e) => { state.query = e.target.value; render(); });
   document.getElementById("chatf")?.addEventListener("submit", (e) => { e.preventDefault(); sendSupport(chatDraft()); });
   document.getElementById("confirmForm")?.addEventListener("submit", async (e) => {
