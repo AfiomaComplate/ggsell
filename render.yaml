@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: aurora-bot
+    runtime: node
+    plan: free
+    rootDir: bot
+    buildCommand: ""
+    startCommand: node bot.js
+    healthCheckPath: /health
+    envVars:
+      - key: WEBAPP_URL
+        value: https://afiomacomplate.github.io/ggsell/
+      - key: BOT_TOKEN
+        sync: false
+      - key: ADMIN_ID
+        sync: false

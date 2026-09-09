@@ -86,7 +86,7 @@ function menuKeyboard() {
         { text: "➕ Создать", web_app: { url: appUrl("sell") } },
       ],
       [
-        { text: "🛟 Поддержка", web_app: { url: appUrl("support") } },
+        { text: "🎧 Поддержка", web_app: { url: appUrl("support") } },
         { text: "🔗 Сайт", url: SITE },
       ],
     ],
@@ -105,15 +105,22 @@ const CAPTION =
 
 async function sendMenu(chatId) {
   const markup = menuKeyboard();
-  const photo = `${WEBAPP}/banner.jpg`;
+  const photo = `${WEBAPP}/start.jpg`;
   const r = await tg("sendPhoto", {
     chat_id: chatId,
     photo,
-    caption: CAPTION,
     reply_markup: markup,
   });
   if (!r || !r.ok) {
-    await tg("sendMessage", { chat_id: chatId, text: CAPTION, reply_markup: markup });
+    const r2 = await tg("sendPhoto", {
+      chat_id: chatId,
+      photo: `${WEBAPP}/banner.jpg`,
+      caption: CAPTION,
+      reply_markup: markup,
+    });
+    if (!r2 || !r2.ok) {
+      await tg("sendMessage", { chat_id: chatId, text: CAPTION, reply_markup: markup });
+    }
   }
 }
 
