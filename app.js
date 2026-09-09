@@ -323,7 +323,7 @@
     </div>`;
   }
 
-      function tabbar() {
+        function tabbar() {
     if (state.screen === "support") return "";
     const on = (id) => state.screen === id ? "on" : "";
     return `<nav class="tabbar">
@@ -333,10 +333,10 @@
       <button class="tab-btn ${on("support")}" data-go="support">${I.help}Помощь</button>
     </nav>`;
   }
-    function topbar() {
-    if (TABS.has(state.screen) || state.screen === "hub") return "";
+        function topbar() {
+    if (state.screen === "hub") return "";
     return `<header class="header">
-      ${btn(I.back + " Назад", `data-back`, "btn btn-ghost")}
+      <button type="button" class="btn btn-ghost" data-back>${I.back}</button>
       <button type="button" class="btn btn-ghost" data-go="profile" style="width:2.5rem;height:2.5rem;padding:0">${I.user}</button>
       <button type="button" class="btn btn-chip" data-go="wallet">${money(state.balances[state.payCurrency] || 0, state.payCurrency)}</button>
     </header>`;
