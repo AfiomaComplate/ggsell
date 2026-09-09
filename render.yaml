@@ -5,8 +5,8 @@ services:
     plan: free
     rootDir: bot
     buildCommand: ""
-    startCommand: node bot.js
-    healthCheckPath: /health
+    startCommand: "node -e \"require('http').createServer((_,r)=>{r.writeHead(200);r.end('stopped')}).listen(process.env.PORT||3000)\""
+    healthCheckPath: /
     envVars:
       - key: WEBAPP_URL
         value: https://afiomacomplate.github.io/ggsell/
