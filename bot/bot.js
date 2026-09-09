@@ -69,6 +69,25 @@ async function tg(method, payload) {
   return r.json();
 }
 
+async function tgForm(method, fields, fileField, buf, filename) {
+  const boundary = "----aurora" + Date.now();
+  const chunks = [];
+  for (const [k, v] of Object.entries(fields)) {
+    chunks.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${k}"\r\n\r\n${v}\r\n`));
+  }
+  chunks.push(Buffer.from(
+    `--${boundary}\r\nContent-Disposition: form-data; name="${fileField}"; filename="${filename}"\r\nContent-Type: image/jpeg\r\n\r\n`
+  ));
+  chunks.push(buf);
+  chunks.push(Buffer.from(`\r\n--${boundary}--\r\n`));
+  const r = await fetch(`https://api.telegram.org/bot${TOKEN}/${method}`, {
+    method: "POST",
+    headers: { "Content-Type": `multipart/form-data; boundary=${boundary}` },
+    body: Buffer.concat(chunks),
+  });
+  return r.json();
+}
+
 function appUrl(hash) {
   return hash ? `${WEBAPP}/#/${hash}` : `${WEBAPP}/`;
 }
@@ -105,10 +124,28 @@ const CAPTION =
 
 async function sendMenu(chatId) {
   const markup = menuKeyboard();
-  const photo = `${WEBAPP}/start.jpg`;
+  const fields = {
+    chat_id: String(chatId),
+    caption: CAPTION,
+    parse_mode: "HTML",
+    reply_markup: JSON.stringify(markup),
+  };
+  try {
+    const img = await fetch(`${WEBAPP}/start.jpg?t=${Date.now()}`, { cache: "no-store" });
+    if (img.ok) {
+      const buf = Buffer.from(await img.arrayBuffer());
+      if (buf.length > 100 && buf[0] === 0xff && buf[1] === 0xd8) {
+        const r = await tgForm("sendPhoto", fields, "photo", buf, "start.jpg");
+        if (r && r.ok) return;
+        console.error("sendPhoto file", r);
+      }
+    }
+  } catch (e) {
+    console.error("start.jpg", e.message);
+  }
   const r = await tg("sendPhoto", {
     chat_id: chatId,
-    photo,
+    photo: `${WEBAPP}/start.jpg?v=${Date.now()}`,
     caption: CAPTION,
     parse_mode: "HTML",
     reply_markup: markup,
