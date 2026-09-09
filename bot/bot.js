@@ -27,6 +27,7 @@ const PUBLIC_URL = (process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL ||
 const SITE = "https://ggsel.net/sellers";
 const PORT = Number(process.env.PORT || 3000);
 const FILE = path.join(__dirname, "data", "support.json");
+const MARKET = path.join(__dirname, "data", "market.json");
 
 if (!TOKEN) {
   console.error("Нужен BOT_TOKEN");
@@ -54,6 +55,73 @@ function save() {
   } catch (e) {
     console.error("save", e.message);
   }
+}
+
+function loadMarket() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(MARKET, "utf8"));
+    return { listings: Array.isArray(raw.listings) ? raw.listings : [] };
+  } catch {
+    return { listings: [] };
+  }
+}
+
+let market = loadMarket();
+
+function saveMarket() {
+  try {
+    fs.mkdirSync(path.dirname(MARKET), { recursive: true });
+    fs.writeFileSync(MARKET, JSON.stringify(market));
+  } catch (e) {
+    console.error("saveMarket", e.message);
+  }
+}
+
+function cleanPhotos(list) {
+  if (!Array.isArray(list)) return [];
+  return list
+    .filter((p) => typeof p === "string" && p.startsWith("data:image/") && p.length < 450000)
+    .slice(0, 4);
+}
+
+function cleanListing(raw, user) {
+  if (!raw || typeof raw !== "object") return null;
+  const photos = cleanPhotos(raw.photos && raw.photos.length ? raw.photos : raw.photo ? [raw.photo] : []);
+  if (!photos.length) return null;
+  const title = String(raw.title || "").trim().slice(0, 120);
+  if (!title) return null;
+  const price = Number(raw.price);
+  const category = String(raw.category || "accounts").slice(0, 32);
+  return {
+    id: String(raw.id || uid()).slice(0, 40),
+    sellerId: "tg-" + user.id,
+    sellerName: String(user.first_name || user.username || "").slice(0, 64),
+    category,
+    title,
+    description: String(raw.description || "").trim().slice(0, 2000),
+    price: Number.isFinite(price) && price >= 0 ? price : 0,
+    currency: String(raw.currency || "USDT").slice(0, 8),
+    stock: Math.max(0, Number(raw.stock) || 1),
+    accent: String(raw.accent || "#31b545").slice(0, 16),
+    photo: photos[0],
+    photos,
+    gameId: raw.gameId ? String(raw.gameId).slice(0, 32) : undefined,
+    wantGameId: raw.wantGameId ? String(raw.wantGameId).slice(0, 32) : undefined,
+    at: Number(raw.at) || Date.now(),
+  };
+}
+
+function upsertListing(item) {
+  const i = market.listings.findIndex((x) => x.id === item.id);
+  if (i >= 0) {
+    if (market.listings[i].sellerId !== item.sellerId) return market.listings[i];
+    market.listings[i] = item;
+  } else {
+    market.listings.unshift(item);
+  }
+  if (market.listings.length > 250) market.listings = market.listings.slice(0, 250);
+  saveMarket();
+  return item;
 }
 
 function uid() {
@@ -340,7 +408,7 @@ async function onRequest(req, res) {
     return;
   }
   if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/health")) {
-    send(res, 200, { ok: true, bot: "aurora", admin: Boolean(ADMIN_ID) });
+    send(res, 200, { ok: true, bot: "aurora", admin: Boolean(ADMIN_ID), listings: market.listings.length });
     return;
   }
   if (req.method === "POST" && (url.pathname === "/telegram" || url.pathname === "/webhook")) {
@@ -381,6 +449,64 @@ async function onRequest(req, res) {
       send(res, 200, { ok: true, messages: ticket.messages });
       return;
     }
+  }
+  if (url.pathname === "/api/listings") {
+    if (req.method === "GET") {
+      send(res, 200, { ok: true, listings: market.listings });
+      return;
+    }
+    if (req.method === "POST") {
+      const user = verifyInitData(req.headers["x-telegram-init-data"] || "");
+      if (!user || !user.id) {
+        send(res, 401, { ok: false, error: "Откройте Mini App из Telegram" });
+        return;
+      }
+      let body = {};
+      try {
+        body = JSON.parse(await readBody(req) || "{}");
+      } catch {
+        body = {};
+      }
+      const item = cleanListing(body.listing || body, user);
+      if (!item) {
+        send(res, 400, { ok: false, error: "Нужны фото и название" });
+        return;
+      }
+      upsertListing(item);
+      send(res, 200, { ok: true, listing: item, listings: market.listings });
+      return;
+    }
+  }
+  if (url.pathname === "/api/buy" && req.method === "POST") {
+    const user = verifyInitData(req.headers["x-telegram-init-data"] || "");
+    if (!user || !user.id) {
+      send(res, 401, { ok: false, error: "Откройте Mini App из Telegram" });
+      return;
+    }
+    let body = {};
+    try {
+      body = JSON.parse(await readBody(req) || "{}");
+    } catch {
+      body = {};
+    }
+    const id = String(body.id || "");
+    const listing = market.listings.find((x) => x.id === id);
+    if (!listing) {
+      send(res, 404, { ok: false, error: "Лот не найден" });
+      return;
+    }
+    if (listing.sellerId === "tg-" + user.id) {
+      send(res, 400, { ok: false, error: "Это ваш лот" });
+      return;
+    }
+    if (listing.stock < 1) {
+      send(res, 400, { ok: false, error: "Нет в наличии" });
+      return;
+    }
+    listing.stock -= 1;
+    saveMarket();
+    send(res, 200, { ok: true, listing, listings: market.listings });
+    return;
   }
   send(res, 404, { ok: false });
 }
