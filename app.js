@@ -650,7 +650,7 @@
     if (!deal) return "";
     return `<div class="confirm-overlay" data-close-confirm>
       <div class="confirm-panel" data-stop>
-        <div class="cp-icon">🔒</div>
+        <div class="cp-icon"></div>
         <div class="cp-title">Подтверждение получения средств</div>
         <div class="cp-warn">⚡ Подтверждение средств будет доступным после подтверждения получения товара покупателем</div>
         <div class="cp-hint">Для завершения верификации сделки войдите в аккаунт, с которого была создана сделка</div>
@@ -812,11 +812,36 @@
     }
   }
 
+  // Глобальная функция для скролла к полям ввода
+  function scrollToInput() {
+    setTimeout(() => {
+      const el = document.getElementById('title');
+      if (el) {
+        const scrollContainer = document.querySelector('.scroll');
+        if (scrollContainer) {
+           const top = el.getBoundingClientRect().top + scrollContainer.scrollTop - 80; // 80px отступ сверху
+           scrollContainer.scrollTo({ top: top, behavior: 'smooth' });
+        }
+      }
+    }, 50);
+  }
+
   function render() {
     const root = $("#app");
+    // Сохраняем позицию скролла
+    const scrollContainer = document.querySelector('.scroll');
+    const scrollTop = scrollContainer ? scrollContainer.scrollTop : 0;
+    
     root.innerHTML = `${state.toast ? `<div class="toast">${esc(state.toast)}</div>` : ""}
       ${confirmModalHtml()}
       ${state.screen === "hub" ? hub() : `<div class="${state.screen === "support" ? "chat-screen" : ""}" style="flex:1;min-height:0;display:flex;flex-direction:column">${topbar()}${view()}</div>${tabbar()}`}`;
+    
+    // Восстанавливаем позицию скролла
+    const newScroll = document.querySelector('.scroll');
+    if (newScroll && newScroll.scrollTop === 0 && scrollTop > 0) {
+        newScroll.scrollTop = scrollTop;
+    }
+    
     const log = $("#chatlog");
     if (log) log.scrollTop = log.scrollHeight;
   }
@@ -889,13 +914,13 @@
     go("deals");
   }
 
-  // ГЛОБАЛЬНАЯ ФУНКЦИЯ ЗАГРУЗКИ ФОТО (чтобы работала в HTML)
+  // ГЛОБАЛЬНАЯ ФУНКЦИЯ ЗАГРУЗКИ ФОТО
   window.handlePhotos = async function(input) {
     const files = Array.from(input.files || []);
     for (const f of files.slice(0, 8 - state.sell.photos.length)) { 
       try { state.sell.photos.push(await compressFile(f)); } catch {} 
     }
-    input.value = ""; // сброс, чтобы можно было загрузить то же фото снова
+    input.value = ""; 
     render();
   };
 
@@ -919,17 +944,15 @@
     if (t.dataset.svc) { 
       state.sell.category = t.dataset.svc; 
       applyCopy(); 
-      // Если выбрали Сделки - сразу прыгаем к заполнению
+      // Если выбрали Сделки - сразу прыгаем к заполнению и скроллим
       if (t.dataset.svc === "deals") { 
           state.sell.role = "sell"; 
           state.sell.step = 3; 
+          render();
+          scrollToInput();
+          return;
       }
       render(); 
-      // Автоскролл вниз
-      setTimeout(()=>{
-        const el = document.getElementById('title');
-        if(el) el.scrollIntoView({behavior:'smooth', block:'center'});
-      }, 100);
       return; 
     }
 
