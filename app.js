@@ -461,13 +461,14 @@
     </div>`;
   }
 
-  function sellView() {
+    function sellView() {
     const s = state.sell;
     const g = game(s.gameId);
     const sc = g && D.showcases[g.id];
     const showGames = D.gameCats.includes(s.category);
     const steps = `<div class="deal-steps">${[1,2,3].map((n,i) => `<div class="deal-step ${s.step >= n ? "on" : ""}"><span class="deal-num">${n}</span><span class="xs">${["Роль","Детали","Готово"][i]}</span></div>`).join("")}</div>`;
     let body = "";
+
     if (s.step === 1) {
       body = `<p class="label mt-4">Ваша роль</p>
         <div class="grid2 mt-2">
@@ -479,24 +480,38 @@
         ${D.games.map((x) => `<button type="button" class="card ${s.gameId === x.id ? "ring" : ""}" style="padding:.75rem;border:0;color:inherit;display:flex;flex-direction:column;align-items:center;gap:.4rem" data-game="${x.id}">${logo(x.id, "logo")}<span class="xs bold">${x.name}</span></button>`).join("")}
       </div>${btn("Далее", `data-sell-next`, "btn btn-primary mt-4")}`;
     } else if (s.step === 2) {
-      body = `<p class="small bold chipfg mt-4">Что продаёте</p>
-        <div class="grid2">${D.services.map((t) => `<button type="button" class="card ${s.category === t.id ? "ring" : ""}" style="display:flex;align-items:center;gap:.65rem;padding:.75rem;text-align:left;border:0;color:inherit" data-svc="${t.id}">
+      // Генерируем кнопки категорий с автоскроллом при клике
+      const servicesHtml = D.services.map((t) => {
+         const safeId = t.id;
+         return `<button type="button" class="card ${s.category === safeId ? "ring" : ""}" 
+            onclick="state.sell.category='${safeId}'; applyCopy(); if('${safeId}'==='deals'){state.sell.role='sell';state.sell.step=3;} render(); setTimeout(()=>{const el=document.getElementById('title');if(el)el.scrollIntoView({behavior:'smooth',block:'center'})},150);"
+            style="display:flex;align-items:center;gap:.65rem;padding:.75rem;text-align:left;border:0;color:inherit">
           <span class="avatar" style="width:2.5rem;height:2.5rem;border-radius:1rem;background:var(--chip);color:var(--chip-fg)">${CAT_ICO[t.id] || I.pack}</span>
           <span><span class="bold" style="display:block;font-size:.875rem">${t.label}</span><span class="xs muted">${t.hint}</span></span>
-        </button>`).join("")}</div>
+        </button>`;
+      }).join("");
+
+      body = `<p class="small bold chipfg mt-4">Что продаёте</p>
+        <div class="grid2">${servicesHtml}</div>
         ${showGames ? `<p class="small bold chipfg mt-4">${s.category === "exchange" ? "Какой аккаунт отдаёте" : "Игра"}</p>
           <div class="grid2">${D.games.map((x) => `<button type="button" class="card ${s.gameId === x.id ? "ring" : ""}" style="display:flex;align-items:center;gap:.65rem;padding:.65rem;text-align:left;border:0;color:inherit" data-game="${x.id}">${logo(x.id)}<span class="bold" style="font-size:.875rem">${x.name}</span></button>`).join("")}</div>` : ""}
         ${s.category === "exchange" ? `<p class="small bold chipfg mt-4">Какой аккаунт ищете</p>
           <div class="grid2">${D.games.map((x) => `<button type="button" class="card ${s.wantGameId === x.id ? "ring" : ""}" style="display:flex;align-items:center;gap:.65rem;padding:.65rem;text-align:left;border:0;color:inherit" data-want="${x.id}">${logo(x.id)}<span class="bold" style="font-size:.875rem">${x.name}</span></button>`).join("")}</div>` : ""}
         ${sc && sc.collections ? `<p class="small bold chipfg mt-4">Что именно</p><div class="grid2">${sc.collections.map((c) => `<button type="button" class="card" style="text-align:left;border:0;color:inherit;padding:0" data-offer="${c.id}" data-offercat="${c.category}" data-offertitle="${esc(c.title)}"><img src="${img(c.image)}" alt="" style="height:4rem;width:100%;object-fit:cover"><span class="xs bold" style="display:block;padding:.5rem">${c.title}</span></button>`).join("")}</div>` : ""}
-                <label class="card photo-add mt" style="cursor:pointer; position:relative; z-index:10;">
-          ${I.image}<span class="bold mt-2">Добавить фото</span><span class="xs muted">Можно несколько · JPG, PNG, WEBP${s.photos.length ? " · " + s.photos.length + "/8" : ""}</span>
-          <input id="photos" class="sr" type="file" accept="image/*" multiple style="opacity:0.01; width:100%; height:100%; position:absolute; top:0; left:0; cursor:pointer;">
-        </label>
-        ${s.photos[0] ? `<img src="${s.photos[0]}" alt="" style="margin-top:.5rem;height:8rem;width:100%;object-fit:cover;border-radius:1.25rem">` : ""}
-        <input class="field mt" id="title" placeholder="Название" value="${esc(s.title)}">
-        <textarea class="field mt" id="desc" placeholder="Опишите товар">${esc(s.description)}</textarea>
-        <input class="field mt" id="price" inputmode="decimal" placeholder="${s.category === "exchange" ? "Доплата, если есть" : "Цена"}" value="${esc(s.price)}">
+        
+        <!-- ИСПРАВЛЕННАЯ КНОПКА ФОТО -->
+        <div class="card mt" style="padding:1.5rem; text-align:center; border:2px dashed var(--border); cursor:pointer;" onclick="document.getElementById('photos-input').click()">
+           ${I.image} <span class="bold" style="display:block;margin-top:0.5rem">Нажми, чтобы добавить фото</span>
+           <span class="xs muted">JPG, PNG, WEBP</span>
+           <input id="photos-input" type="file" accept="image/*" multiple style="display:none">
+        </div>
+        <!-- КОНЕЦ ФОТО -->
+
+        ${s.photos.length > 0 ? `<div class="grid2 mt-2">${s.photos.map((p,i) => `<div style="position:relative"><img src="${p}" style="height:6rem;width:100%;object-fit:cover;border-radius:1rem"><button type="button" style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.6);color:#fff;border-radius:50%;width:20px;height:20px;display:grid;place-items:center;font-size:12px" onclick="state.sell.photos.splice(${i},1);render()">×</button></div>`).join("")}</div>` : ""}
+        
+        <input class="field mt" id="title" placeholder="Название товара" value="${esc(s.title)}">
+        <textarea class="field mt" id="desc" placeholder="Опишите товар (состояние, причина продажи)">${esc(s.description)}</textarea>
+        <input class="field mt" id="price" inputmode="decimal" placeholder="${s.category === "exchange" ? "Доплата, если есть" : "Цена (например 1500)"}" value="${esc(s.price)}">
         <div class="grid3 mt-2">${D.currencies.map((c) => btn(c.label, `data-ccy="${c.id}"`, `btn btn-chip ${s.currency === c.id ? "btn-chip-on" : ""}`)).join("")}</div>
         ${btn("Далее", `data-sell-next`, "btn btn-primary mt")}`;
     } else {
@@ -952,7 +967,7 @@
   });
 
   // Инпуты (один раз)
-  document.getElementById("photos")?.addEventListener("change", async (e) => {
+  document.getElementById("photos-input")?.addEventListener("change", async (e) => {
     const files = Array.from(e.target.files || []);
     for (const f of files.slice(0, 8 - state.sell.photos.length)) { try { state.sell.photos.push(await compressFile(f)); } catch {} }
     render();
