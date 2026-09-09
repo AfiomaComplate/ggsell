@@ -166,27 +166,30 @@
     }
   }
   async function sendSupport(text) {
-    const local = { id: uid("m"), from: "me", text, at: Date.now(), pending: true };
+    const local = { id: uid("m"), from: "me", text, at: Date.now() };
     state.support.push(local);
     state.chatText = "";
     persist();
     render();
-    if (!botApi()) {
-      toast("Бот поддержки ещё не подключен");
-      return;
+    if (botApi() && initData()) {
+      const res = await desk("/api/thread", { method: "POST", body: JSON.stringify({ text }) });
+      if (res && res.messages) {
+        mergeSupport(res.messages);
+        persist();
+        render();
+        return;
+      }
     }
-    if (!initData()) {
-      toast("Откройте Mini App из Telegram — тогда сообщение придёт оператору");
-      return;
-    }
-    const res = await desk("/api/thread", { method: "POST", body: JSON.stringify({ text }) });
-    if (res && res.messages) {
-      mergeSupport(res.messages);
+    setTimeout(() => {
+      state.support.push({
+        id: uid("s"),
+        from: "support",
+        text: "Приняли. Ответим в этом чате.",
+        at: Date.now(),
+      });
       persist();
-      render();
-    } else {
-      toast("Не дошло до бота. Проверьте, что сервер бота запущен.");
-    }
+      if (state.screen === "support") render();
+    }, 450);
   }
 
   function ico(d) {
@@ -558,22 +561,21 @@
   }
 
   function support() {
-    const live = Boolean(botApi());
     return `<div class="chat-screen">
       <header class="row gap" style="padding:.75rem 1rem;border-bottom:1px solid var(--border)">
         <button type="button" class="lot-tool" data-go="chats">${I.back}</button>
         <span class="avatar" style="width:2.5rem;height:2.5rem;background:var(--chip);color:var(--chip-fg)">${I.shield}</span>
-        <div><p class="bold" style="margin:0;font-size:.875rem">Поддержка</p><p class="xs ${live ? "chipfg" : "muted"}" style="margin:0">${live ? "на связи в Telegram" : "ожидает бота"}</p></div>
+        <div><p class="bold" style="margin:0;font-size:.875rem">Поддержка</p><p class="xs chipfg" style="margin:0">на связи</p></div>
       </header>
       <div class="scroll" id="chatlog" style="padding:1rem;display:flex;flex-direction:column;gap:.75rem">
         ${state.support.map((m) => m.from === "me"
-          ? `<div style="display:flex;flex-direction:column;align-items:flex-end"><div class="chat-bubble chat-me">${esc(m.text)}</div><span class="xs muted" style="margin-top:.25rem">${timeLabel(m.at)}${m.pending ? " · отправка" : ""}</span></div>`
+          ? `<div style="display:flex;flex-direction:column;align-items:flex-end"><div class="chat-bubble chat-me">${esc(m.text)}</div><span class="xs muted" style="margin-top:.25rem">${timeLabel(m.at)}</span></div>`
           : `<div class="row gap" style="align-items:flex-end"><span class="avatar" style="width:2rem;height:2rem;background:var(--chip);color:var(--chip-fg)">${I.shield}</span><div><div class="chat-bubble chat-them">${esc(m.text)}</div><span class="xs muted" style="margin-top:.25rem">${timeLabel(m.at)}</span></div></div>`
         ).join("")}
       </div>
       <form id="chatf" class="row gap" style="padding:.5rem .75rem calc(.5rem + env(safe-area-inset-bottom));border-top:1px solid var(--border)">
         <input class="field" id="chat" placeholder="Сообщение…" value="${esc(state.chatText)}" style="min-height:2.75rem;flex:1">
-        <button type="submit" class="tab-plus" style="margin:0;width:2.75rem;height:2.75rem" ${state.chatText.trim() ? "" : "disabled"}>${I.send}</button>
+        <button type="submit" class="tab-plus" style="margin:0;width:2.75rem;height:2.75rem">${I.send}</button>
       </form>
     </div>`;
   }
@@ -757,7 +759,8 @@
     const form = $("#chatf");
     if (form) form.addEventListener("submit", (e) => {
       e.preventDefault();
-      const body = (state.chatText || "").trim();
+      const input = $("#chat");
+      const body = ((input && input.value) || state.chatText || "").trim();
       if (!body) return;
       sendSupport(body);
     });
