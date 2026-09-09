@@ -134,9 +134,13 @@
     if (!Array.isArray(msgs)) return;
     const greet = state.support.find((m) => m.id === "s0");
     const mapped = msgs.map(mapMsg);
-    const have = new Set(mapped.map((m) => m.id));
-    const pending = state.support.filter((m) => m.pending && !have.has(m.id));
-    state.support = [...(greet ? [greet] : []), ...mapped, ...pending];
+    const serverIds = new Set(mapped.map((m) => m.id));
+    const extras = state.support.filter((m) => m.id !== "s0" && !serverIds.has(m.id));
+    const next = [...(greet ? [greet] : []), ...mapped];
+    for (const m of extras) {
+      if (!next.some((x) => x.from === m.from && x.text === m.text)) next.push(m);
+    }
+    state.support = next;
   }
   async function desk(path, opts) {
     const base = botApi();
@@ -162,17 +166,25 @@
     if (res && res.messages) {
       mergeSupport(res.messages);
       persist();
-      if (state.screen === "support") render();
+      const typing = document.activeElement && document.activeElement.id === "chat";
+      if (typing) state.chatText = document.activeElement.value;
+      if (state.screen === "support" && !typing) render();
     }
   }
+  function chatDraft() {
+    const input = $("#chat");
+    return ((input && input.value) || state.chatText || "").trim();
+  }
   async function sendSupport(text) {
-    const local = { id: uid("m"), from: "me", text, at: Date.now() };
+    const body = String(text || "").trim();
+    if (!body) return;
+    const local = { id: uid("m"), from: "me", text: body, at: Date.now(), local: true };
     state.support.push(local);
     state.chatText = "";
     persist();
     render();
     if (botApi() && initData()) {
-      const res = await desk("/api/thread", { method: "POST", body: JSON.stringify({ text }) });
+      const res = await desk("/api/thread", { method: "POST", body: JSON.stringify({ text: body }) });
       if (res && res.messages) {
         mergeSupport(res.messages);
         persist();
@@ -573,9 +585,9 @@
           : `<div class="row gap" style="align-items:flex-end"><span class="avatar" style="width:2rem;height:2rem;background:var(--chip);color:var(--chip-fg)">${I.shield}</span><div><div class="chat-bubble chat-them">${esc(m.text)}</div><span class="xs muted" style="margin-top:.25rem">${timeLabel(m.at)}</span></div></div>`
         ).join("")}
       </div>
-      <form id="chatf" class="row gap" style="padding:.5rem .75rem calc(.5rem + env(safe-area-inset-bottom));border-top:1px solid var(--border)">
-        <input class="field" id="chat" placeholder="Сообщение…" value="${esc(state.chatText)}" style="min-height:2.75rem;flex:1">
-        <button type="submit" class="tab-plus" style="margin:0;width:2.75rem;height:2.75rem">${I.send}</button>
+      <form id="chatf" class="row gap" style="padding:.5rem .75rem calc(.5rem + env(safe-area-inset-bottom));border-top:1px solid var(--border);background:var(--bg)">
+        <input class="field" id="chat" placeholder="Сообщение…" value="${esc(state.chatText)}" autocomplete="off" enterkeyhint="send" style="min-height:2.75rem;flex:1">
+        <button type="button" class="tab-plus" data-send-chat style="margin:0;width:2.75rem;height:2.75rem">${I.send}</button>
       </form>
     </div>`;
   }
@@ -664,7 +676,7 @@
 
   function bind(root) {
     root.addEventListener("click", (e) => {
-      const t = e.target.closest("[data-go],[data-buy],[data-site],[data-back],[data-fold],[data-pick],[data-region],[data-role],[data-svc],[data-game],[data-want],[data-offer],[data-sell-next],[data-sell-back],[data-publish],[data-buy-go],[data-sheet],[data-ccy],[data-pick-ccy],[data-set-ccy],[data-topup],[data-withdraw],[data-sort-dir],[data-sort-key],[data-save-api]");
+      const t = e.target.closest("[data-go],[data-buy],[data-site],[data-back],[data-fold],[data-pick],[data-region],[data-role],[data-svc],[data-game],[data-want],[data-offer],[data-sell-next],[data-sell-back],[data-publish],[data-buy-go],[data-sheet],[data-ccy],[data-pick-ccy],[data-set-ccy],[data-topup],[data-withdraw],[data-sort-dir],[data-sort-key],[data-save-api],[data-send-chat]");
       if (!t) return;
       if (t.hasAttribute("data-stop")) return;
       haptic();
@@ -741,12 +753,34 @@
         toast(v ? "Сервер бота сохранён" : "Адрес очищен");
         return;
       }
+      if (t.hasAttribute("data-send-chat")) {
+        const body = chatDraft();
+        if (!body) return;
+        sendSupport(body);
+        return;
+      }
     });
     const q = $("#q"); if (q) q.addEventListener("input", (e) => { state.query = e.target.value; });
     const title = $("#title"); if (title) title.addEventListener("input", (e) => { state.sell.title = e.target.value; });
     const desc = $("#desc"); if (desc) desc.addEventListener("input", (e) => { state.sell.description = e.target.value; });
     const price = $("#price"); if (price) price.addEventListener("input", (e) => { state.sell.price = e.target.value; });
-    const chat = $("#chat"); if (chat) chat.addEventListener("input", (e) => { state.chatText = e.target.value; });
+    const chat = $("#chat");
+    if (chat) {
+      chat.addEventListener("input", (e) => { state.chatText = e.target.value; });
+      chat.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          const body = chatDraft();
+          if (body) sendSupport(body);
+        }
+      });
+    }
+    const form = $("#chatf");
+    if (form) form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const body = chatDraft();
+      if (body) sendSupport(body);
+    });
     const photos = $("#photos");
     if (photos) photos.addEventListener("change", async (e) => {
       const files = [...(e.target.files || [])].slice(0, 8 - state.sell.photos.length);
@@ -755,14 +789,6 @@
         e.target.value = "";
         render();
       } catch { toast("Нужно изображение (JPG, PNG, WEBP)"); }
-    });
-    const form = $("#chatf");
-    if (form) form.addEventListener("submit", (e) => {
-      e.preventDefault();
-      const input = $("#chat");
-      const body = ((input && input.value) || state.chatText || "").trim();
-      if (!body) return;
-      sendSupport(body);
     });
     const panel = root.querySelector(".sheet-panel");
     if (panel) panel.addEventListener("click", (e) => e.stopPropagation());
