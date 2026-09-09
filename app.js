@@ -489,8 +489,10 @@
         ${s.category === "exchange" ? `<p class="small bold chipfg mt-4">Какой аккаунт ищете</p>
           <div class="grid2">${D.games.map((x) => `<button type="button" class="card ${s.wantGameId === x.id ? "ring" : ""}" style="display:flex;align-items:center;gap:.65rem;padding:.65rem;text-align:left;border:0;color:inherit" data-want="${x.id}">${logo(x.id)}<span class="bold" style="font-size:.875rem">${x.name}</span></button>`).join("")}</div>` : ""}
         ${sc && sc.collections ? `<p class="small bold chipfg mt-4">Что именно</p><div class="grid2">${sc.collections.map((c) => `<button type="button" class="card" style="text-align:left;border:0;color:inherit;padding:0" data-offer="${c.id}" data-offercat="${c.category}" data-offertitle="${esc(c.title)}"><img src="${img(c.image)}" alt="" style="height:4rem;width:100%;object-fit:cover"><span class="xs bold" style="display:block;padding:.5rem">${c.title}</span></button>`).join("")}</div>` : ""}
-        <label class="card photo-add mt" style="cursor:pointer">${I.image}<span class="bold mt-2">Добавить фото</span><span class="xs muted">Можно несколько · JPG, PNG, WEBP${s.photos.length ? " · " + s.photos.length + "/8" : ""}</span>
-          <input id="photos" class="sr" type="file" accept="image/*" multiple></label>
+                <label class="card photo-add mt" style="cursor:pointer; position:relative; z-index:10;">
+          ${I.image}<span class="bold mt-2">Добавить фото</span><span class="xs muted">Можно несколько · JPG, PNG, WEBP${s.photos.length ? " · " + s.photos.length + "/8" : ""}</span>
+          <input id="photos" class="sr" type="file" accept="image/*" multiple style="opacity:0.01; width:100%; height:100%; position:absolute; top:0; left:0; cursor:pointer;">
+        </label>
         ${s.photos[0] ? `<img src="${s.photos[0]}" alt="" style="margin-top:.5rem;height:8rem;width:100%;object-fit:cover;border-radius:1.25rem">` : ""}
         <input class="field mt" id="title" placeholder="Название" value="${esc(s.title)}">
         <textarea class="field mt" id="desc" placeholder="Опишите товар">${esc(s.description)}</textarea>
