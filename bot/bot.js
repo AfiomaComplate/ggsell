@@ -100,27 +100,26 @@ function supportKeyboard() {
 }
 
 const CAPTION =
-  "🟢 Сервис для создания и проведения сделок между пользователями\n\n" +
-  "Покупайте, продавайте и обменивайте товары или услуги безопасно и удобно ☘️";
+  "<b>🟢 Сервис для создания и проведения сделок между пользователями</b>\n\n" +
+  "Покупайте, продавайте и обменивайте товары или услуги безопасно и удобно";
 
 async function sendMenu(chatId) {
   const markup = menuKeyboard();
-  const photo = `${WEBAPP}/start.jpg`;
+  const photo = `${WEBAPP}/banner.jpg`;
   const r = await tg("sendPhoto", {
     chat_id: chatId,
     photo,
+    caption: CAPTION,
+    parse_mode: "HTML",
     reply_markup: markup,
   });
   if (!r || !r.ok) {
-    const r2 = await tg("sendPhoto", {
+    await tg("sendMessage", {
       chat_id: chatId,
-      photo: `${WEBAPP}/banner.jpg`,
-      caption: CAPTION,
+      text: CAPTION,
+      parse_mode: "HTML",
       reply_markup: markup,
     });
-    if (!r2 || !r2.ok) {
-      await tg("sendMessage", { chat_id: chatId, text: CAPTION, reply_markup: markup });
-    }
   }
 }
 
