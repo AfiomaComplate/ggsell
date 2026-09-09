@@ -104,7 +104,17 @@ const CAPTION =
   "Покупайте, продавайте и обменивайте товары или услуги безопасно и удобно ☘️";
 
 async function sendMenu(chatId) {
-  await tg("sendMessage", { chat_id: chatId, text: CAPTION, reply_markup: menuKeyboard() });
+  const markup = menuKeyboard();
+  const photo = `${WEBAPP}/banner.jpg`;
+  const r = await tg("sendPhoto", {
+    chat_id: chatId,
+    photo,
+    caption: CAPTION,
+    reply_markup: markup,
+  });
+  if (!r || !r.ok) {
+    await tg("sendMessage", { chat_id: chatId, text: CAPTION, reply_markup: markup });
+  }
 }
 
 function upsert(tgId, username, firstName) {

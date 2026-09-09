@@ -786,6 +786,7 @@
       botApi();
       if (botApi() && initData()) pullThread();
       setInterval(() => { if (state.screen === "support") pullThread(); }, 2500);
+      if (window.__bootDone) window.__bootDone();
       return;
     }
     n += 1; setTimeout(tryBoot, 40);

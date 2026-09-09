@@ -10,17 +10,62 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap">
   <link rel="stylesheet" href="./styles.css">
+  <style>
+    .boot{position:fixed;inset:0;z-index:80;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#17212b;transition:opacity .38s ease,visibility .38s ease}
+    .boot.off{opacity:0;visibility:hidden;pointer-events:none}
+    .boot-g{position:relative;width:9.5rem;height:9.5rem}
+    .boot-g svg{position:absolute;inset:0;width:100%;height:100%}
+    .boot-g .g-back{color:#243342}
+    .boot-g .g-fill{color:#31b545;clip-path:inset(100% 0 0 0);filter:drop-shadow(0 0 18px color-mix(in srgb,#31b545 45%,transparent))}
+    .boot-track{position:absolute;left:0;right:0;bottom:0;height:3px;background:#243342}
+    .boot-track i{display:block;height:100%;width:0;background:#31b545;box-shadow:0 0 12px #31b545}
+    @media (prefers-reduced-motion:reduce){
+      .boot-g .g-fill{clip-path:inset(0 0 0 0)!important}
+    }
+  </style>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
+  <div id="boot" class="boot" aria-hidden="true">
+    <div class="boot-g">
+      <svg class="g-back" viewBox="0 0 240 240"><text x="120" y="128" text-anchor="middle" dominant-baseline="central" font-size="188" font-weight="800" font-family="Manrope, ui-sans-serif, system-ui, sans-serif" fill="currentColor">G</text></svg>
+      <svg class="g-fill" id="gfill" viewBox="0 0 240 240"><text x="120" y="128" text-anchor="middle" dominant-baseline="central" font-size="188" font-weight="800" font-family="Manrope, ui-sans-serif, system-ui, sans-serif" fill="currentColor">G</text></svg>
+    </div>
+    <div class="boot-track"><i id="bootbar"></i></div>
+  </div>
   <div class="wrap" id="app"></div>
-  <script src="./img/pack0.js"></script>
-  <script src="./img/pack1.js"></script>
-  <script src="./img/pack2.js"></script>
-  <script src="./img/pack3.js"></script>
-  <script src="./img/pack4.js"></script>
-  <script src="./img/pack5.js"></script>
-  <script src="./data.js"></script>
-  <script src="./app.js"></script>
+  <script>
+    (function(){
+      var bar=document.getElementById("bootbar");
+      var fill=document.getElementById("gfill");
+      var boot=document.getElementById("boot");
+      var n=0,total=8,done=false,t0=Date.now();
+      function paint(p){
+        p=Math.max(0,Math.min(1,p));
+        if(bar) bar.style.width=(p*100)+"%";
+        if(fill) fill.style.clipPath="inset("+((1-p)*100)+"% 0 0 0)";
+      }
+      window.__bootTick=function(){ n+=1; paint(n/total); };
+      window.__bootDone=function(){
+        if(done) return;
+        done=true;
+        paint(1);
+        var wait=Math.max(0, 1100-(Date.now()-t0));
+        setTimeout(function(){
+          boot.classList.add("off");
+          setTimeout(function(){ if(boot && boot.parentNode) boot.remove(); }, 420);
+        }, wait);
+      };
+      setTimeout(function(){ if(!done) window.__bootDone(); }, 8000);
+    })();
+  </script>
+  <script src="./img/pack0.js" onload="__bootTick()"></script>
+  <script src="./img/pack1.js" onload="__bootTick()"></script>
+  <script src="./img/pack2.js" onload="__bootTick()"></script>
+  <script src="./img/pack3.js" onload="__bootTick()"></script>
+  <script src="./img/pack4.js" onload="__bootTick()"></script>
+  <script src="./img/pack5.js" onload="__bootTick()"></script>
+  <script src="./data.js" onload="__bootTick()"></script>
+  <script src="./app.js" onload="__bootTick()"></script>
 </body>
 </html>
