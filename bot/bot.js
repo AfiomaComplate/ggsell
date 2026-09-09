@@ -95,7 +95,7 @@ function appUrl(hash) {
 function menuKeyboard() {
   return {
     inline_keyboard: [
-      [{ text: "↗ Открыть", web_app: { url: appUrl("profile") } }],
+      [{ text: "↗ Открыть", web_app: { url: appUrl("profile") }, style: "success" }],
       [
         { text: "👤 Профиль", web_app: { url: appUrl("profile") } },
         { text: "💼 Кошелек", web_app: { url: appUrl("wallet") } },
