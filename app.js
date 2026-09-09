@@ -323,11 +323,11 @@
     </div>`;
   }
 
-  function tabbar() {
+    function tabbar() {
     if (state.screen === "support") return "";
     const on = (id) => state.screen === id ? "on" : "";
     return `<nav class="tabbar">
-      <button class="tab-btn ${on("profile")}" data-go="profile">${I.user}Профиль</button>
+      <button class="tab-btn ${on("home")}" data-go="home">${I.pack}Каталог</button>
       <button class="tab-btn ${on("deals")}" data-go="deals">${I.lock}Сделки</button>
       <button class="tab-plus" data-go="sell" aria-label="Новая сделка">${I.plus}</button>
       <button class="tab-btn ${on("wallet")}" data-go="wallet">${I.wallet}Кошелёк</button>
